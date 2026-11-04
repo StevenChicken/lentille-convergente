@@ -26,6 +26,11 @@
     <section class="stage" aria-label="Schéma optique">
       <canvas id="scene" tabindex="0"
         aria-label="Schéma de la lentille convergente. Faites glisser l'objet AB avec la souris ou le doigt, ou utilisez les flèches du clavier."></canvas>
+      <div class="view-scroll">
+        <label for="pan-range" class="view-scroll-label">Faire défiler la vue</label>
+        <input type="range" id="pan-range" min="-200" max="200" step="1" value="0"
+          aria-label="Faire défiler la vue vers la gauche ou vers la droite">
+      </div>
     </section>
 
     <div class="panel panel-controls" role="toolbar" aria-label="Réglages">
@@ -39,18 +44,25 @@
           <option value="E">Lentille E</option>
         </select>
       </label>
-      <label class="control control-check">
-        <input type="checkbox" id="show-foci" checked>
-        <span>Afficher les foyers F et F'</span>
-      </label>
-      <label class="control control-check">
-        <input type="checkbox" id="show-model" checked>
-        <span>Afficher la loi</span>
-      </label>
-      <label class="control control-check" id="bench-control" hidden>
-        <input type="checkbox" id="show-bench">
-        <span>Afficher le banc d'optique</span>
-      </label>
+      <div class="control-group" role="group" aria-labelledby="show-label">
+        <span class="control-label" id="show-label">Afficher&nbsp;:</span>
+        <label class="control control-check">
+          <input type="checkbox" id="show-foci" checked>
+          <span>les foyers F et F'</span>
+        </label>
+        <label class="control control-check">
+          <input type="checkbox" id="show-model" checked>
+          <span>la loi</span>
+        </label>
+        <label class="control control-check">
+          <input type="checkbox" id="show-quantities">
+          <span>les grandeurs</span>
+        </label>
+        <label class="control control-check" id="bench-control" hidden>
+          <input type="checkbox" id="show-bench">
+          <span>le banc d'optique</span>
+        </label>
+      </div>
       <button type="button" id="reset-btn" class="btn">Réinitialiser</button>
     </div>
 
@@ -85,33 +97,33 @@
       <summary class="panel-title">Modèle</summary>
       <div class="model">
         <p class="formula formula-main">
-          <span class="frac"><span>1</span><span><var>f</var></span></span>
+          <span class="frac"><span>1</span><span><span class="q q-f"><var>f</var></span></span></span>
           <span class="op">=</span>
-          <span class="frac"><span>1</span><span><var>d</var><sub>o</sub></span></span>
+          <span class="frac"><span>1</span><span><span class="q q-do"><var>d</var><sub>o</sub></span></span></span>
           <span class="op">+</span>
-          <span class="frac"><span>1</span><span><var>d</var><sub>i</sub></span></span>
+          <span class="frac"><span>1</span><span><span class="q q-di"><var>d</var><sub>i</sub></span></span></span>
         </p>
         <div class="formula-row">
           <p class="formula">
-            <span class="frac"><span><var>h</var><sub>i</sub></span><span><var>h</var><sub>o</sub></span></span>
+            <span class="frac"><span><span class="q q-hi"><var>h</var><sub>i</sub></span></span><span><span class="q q-ho"><var>h</var><sub>o</sub></span></span></span>
             <span class="op">=</span>
-            <span class="frac"><span><var>d</var><sub>i</sub></span><span><var>d</var><sub>o</sub></span></span>
+            <span class="frac"><span><span class="q q-di"><var>d</var><sub>i</sub></span></span><span><span class="q q-do"><var>d</var><sub>o</sub></span></span></span>
           </p>
           <p class="formula">
-            <var>V</var>
+            <span class="q q-v"><var>V</var></span>
             <span class="op">=</span>
-            <span class="frac"><span>1</span><span><var>f</var></span></span>
+            <span class="frac"><span>1</span><span><span class="q q-f"><var>f</var></span></span></span>
           </p>
         </div>
-        <p class="formula-unit">(<var>f</var> en mètres, <var>V</var> en dioptries δ)</p>
-        <p class="model-note" id="model-note">Image virtuelle&nbsp;: <var>d</var><sub>i</sub> est compté négativement dans la formule.</p>
+        <p class="formula-unit">(<span class="q q-f"><var>f</var></span> en mètres, <span class="q q-v"><var>V</var></span> en dioptries δ)</p>
+        <p class="model-note" id="model-note">Image virtuelle&nbsp;: <span class="q q-di"><var>d</var><sub>i</sub></span> est compté négativement dans la formule.</p>
         <ul class="model-symbols">
-          <li><var>f</var>&nbsp;: distance focale de la lentille</li>
-          <li><var>d</var><sub>o</sub>&nbsp;: distance objet-lentille</li>
-          <li><var>d</var><sub>i</sub>&nbsp;: distance image-lentille</li>
-          <li><var>h</var><sub>o</sub>&nbsp;: taille de l'objet</li>
-          <li><var>h</var><sub>i</sub>&nbsp;: taille de l'image</li>
-          <li><var>V</var>&nbsp;: vergence de la lentille</li>
+          <li><span class="q q-f"><var>f</var></span>&nbsp;: distance focale de la lentille</li>
+          <li><span class="q q-do"><var>d</var><sub>o</sub></span>&nbsp;: distance objet-lentille</li>
+          <li><span class="q q-di"><var>d</var><sub>i</sub></span>&nbsp;: distance image-lentille</li>
+          <li><span class="q q-ho"><var>h</var><sub>o</sub></span>&nbsp;: taille de l'objet</li>
+          <li><span class="q q-hi"><var>h</var><sub>i</sub></span>&nbsp;: taille de l'image</li>
+          <li><span class="q q-v"><var>V</var></span>&nbsp;: vergence de la lentille</li>
         </ul>
       </div>
     </details>

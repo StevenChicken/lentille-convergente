@@ -20,6 +20,7 @@
   --gap: clamp(10px, 1vw, 32px);          /* marge des panneaux flottants */
   --pad: clamp(10px, 0.8vw, 26px);        /* marge intérieure des panneaux */
   --readouts-w: clamp(230px, 17vw, 580px);
+  --scroll-h: clamp(34px, 2.6vw, 64px);   /* barre « Faire défiler la vue » sous la scène */
 
   /* Interface */
   --bg: #F6FAFE;
@@ -63,6 +64,12 @@
   --ray1: #E5484D;
   --ray2: #476EE4;
   --ray3: #2FA36B;
+  /* Grandeurs (case « Afficher les grandeurs ») : cotes du schéma et symboles du Modèle */
+  --q-do: #7C3AED;
+  --q-di: #4D7C0F;  /* olive : distinct du rayon vert et de l'image */
+  --q-f: #B45309;   /* V = 1/f : même couleur que f */
+  --q-ho: #9D174D;
+  --q-hi: #DB2777;  /* rose : distinct du rayon bleu */
   --badge-bg: #476EE4;
   --badge-text: #ffffff;
 }
@@ -139,9 +146,10 @@ body {
 
 #scene {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
   width: 100%;
-  height: 100%;
+  height: calc(100% - var(--scroll-h));
   display: block;
   touch-action: none;
   font-size: var(--canvas-label-size); /* lu par sim.js */
@@ -193,7 +201,7 @@ body {
 }
 
 .panel-legend {
-  bottom: var(--gap);
+  bottom: calc(var(--gap) + var(--scroll-h));
   left: var(--gap);
   max-width: calc(50% - 3 * var(--gap));
 }
@@ -298,6 +306,15 @@ body {
   font-weight: 600;
 }
 
+/* Case « Afficher les grandeurs » : symboles colorés comme leurs cotes sur le schéma */
+body.show-quantities .q { font-weight: 700; }
+body.show-quantities .q-do { color: var(--q-do); }
+body.show-quantities .q-di { color: var(--q-di); }
+body.show-quantities .q-f,
+body.show-quantities .q-v { color: var(--q-f); }
+body.show-quantities .q-ho { color: var(--q-ho); }
+body.show-quantities .q-hi { color: var(--q-hi); }
+
 .model-symbols {
   list-style: none;
   margin: 0;
@@ -311,6 +328,13 @@ body {
 }
 
 /* Réglages */
+.control-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4em 0.9em;
+}
+
 .control {
   display: inline-flex;
   align-items: center;
@@ -372,6 +396,40 @@ body {
 }
 
 #scene:focus-visible { outline-offset: -3px; }
+
+/* Barre de défilement horizontal de la vue, collée sous la scène */
+.view-scroll {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--scroll-h);
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  padding: 0 var(--gap);
+  background: var(--hint-bg);
+  border-top: 2px solid var(--panel-border);
+  font-size: var(--fs-label);
+}
+
+.view-scroll-label {
+  flex: 0 0 auto;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  color: var(--muted);
+}
+
+#pan-range {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: ew-resize;
+}
+
+#pan-range:focus-visible { outline: 3px solid var(--accent-2); outline-offset: -3px; }
 
 /* Mesures */
 .readouts {

@@ -149,6 +149,7 @@
   var H_MAX = 15;
   var TOUCH_TARGET = 48;     // zone de saisie au doigt / stylet (px CSS, invisible)
   var DEFAULTS = { dObj: 30, hObj: 5, showFoci: true };
+  var PAN_LIMIT = 200;       // défilement horizontal de la vue : centre entre -200 et +200 cm
 
   /* Photo du banc d'optique (fond facultatif), dessinée sous la grille.
      Coordonnées continues de l'image (bord gauche du pixel 0 = 0) :
@@ -176,6 +177,8 @@
   var model = document.getElementById('model');
   var modelBox = document.getElementById('show-model');
   var benchBox = document.getElementById('show-bench');
+  var quantBox = document.getElementById('show-quantities');
+  var panRange = document.getElementById('pan-range');
   var benchImg = null;       // chargée seulement à la première activation
   var benchReady = false;
   var modelNote = document.getElementById('model-note');
@@ -196,13 +199,15 @@
     hObj: DEFAULTS.hObj,
     showFoci: fociBox.checked,
     showBench: false,
+    showQuantities: false,
     drag: null,     // { mode: 'body' | 'tip', offset, pointerId }
     hover: null,    // 'body' | 'tip' | null
     legendTouched: false,
     modelTouched: false
   };
 
-  var view = { w: 0, h: 0, dpr: 1, scale: 1, cx: 0, cy: 0, rect: null };
+  // panX : abscisse (cm) du centre de la vue ; 0 = lentille au centre.
+  var view = { w: 0, h: 0, dpr: 1, scale: 1, cx: 0, cy: 0, rect: null, panX: 0 };
   var theme = {};
   var K = 1; // facteur d'épaisseur : 1 pour des étiquettes de 16 px
 
@@ -210,7 +215,8 @@
     var cs = getComputedStyle(document.documentElement);
     var names = ['scene-top', 'scene-bottom', 'grid', 'grid-major', 'axis', 'lens', 'lens-fill',
       'focal-fill', 'focal-stroke', 'label', 'scalebar', 'object', 'handle-fill', 'image',
-      'image-virtual', 'ray1', 'ray2', 'ray3', 'badge-bg', 'badge-text', 'font-canvas', 'label-halo'];
+      'image-virtual', 'ray1', 'ray2', 'ray3', 'badge-bg', 'badge-text', 'font-canvas', 'label-halo',
+      'q-do', 'q-di', 'q-f', 'q-ho', 'q-hi'];
     names.forEach(function (n) { theme[n] = cs.getPropertyValue('--' + n).trim(); });
     if (!theme['font-canvas']) theme['font-canvas'] = 'system-ui, sans-serif';
     // --canvas-label-size peut contenir clamp(...) : on lit la valeur calculée sur le canevas.
@@ -230,9 +236,23 @@
     return Math.max(H_MIN, Math.min(H_MAX, visible));
   }
 
-  function sx(x) { return view.cx + x * view.scale; }
+  function sx(x) { return view.cx + (x - view.panX) * view.scale; }
   function sy(y) { return view.cy - y * view.scale; }
-  function wx(px) { return (px - view.cx) / view.scale; }
+  function wx(px) { return (px - view.cx) / view.scale + view.panX; }
+
+  /** Zone visible (cm) pour le décalage courant. */
+  function updateRect() {
+    var span = halfSpan(), halfY = (view.h / 2) / view.scale;
+    view.rect = { xmin: view.panX - span, xmax: view.panX + span, ymin: -halfY, ymax: halfY };
+  }
+
+  /** Fait défiler la vue (cm) ; met à jour la barre « Faire défiler la vue ». */
+  function setPan(x) {
+    view.panX = clamp(Math.round(x), -PAN_LIMIT, PAN_LIMIT);
+    if (panRange && +panRange.value !== view.panX) panRange.value = view.panX;
+    updateRect();
+    requestDraw();
+  }
   function wy(py) { return (view.cy - py) / view.scale; }
 
   function isFloating(el) { return getComputedStyle(el).position === 'absolute'; }
@@ -250,6 +270,7 @@
     }
     var ws = sideStack.parentNode.getBoundingClientRect();
     if (isFloating(sideStack)) {
+      ws = canvas.getBoundingClientRect(); // ne pas recouvrir la barre de défilement sous la scène
       // Panneaux flottants : légende selon la hauteur de la scène ; le modèle reste
       // au-dessus de la barre d'échelle, sinon il est replié.
       if (legendAuto) legend.open = view.h >= LEGEND_MIN_STAGE_H;
@@ -281,8 +302,7 @@
     view.scale = w / (2 * span);
     view.cx = w / 2;
     view.cy = h / 2;
-    var halfY = (h / 2) / view.scale;
-    view.rect = { xmin: -span, xmax: span, ymin: -halfY, ymax: halfY };
+    updateRect();
     state.hObj = clamp(state.hObj, H_MIN, hMax());
     state.dObj = clamp(state.dObj, D_MIN, dMax());
     readTheme();
@@ -559,7 +579,7 @@
       ctx.strokeStyle = rayColor(s.ray);
       // Prolongements : même couleur et épaisseur que les rayons, en tirets.
       ctx.globalAlpha = construction ? 0.7 : 1;
-      ctx.lineWidth = (construction ? 2 : 3) * K;
+      ctx.lineWidth = (construction ? 1.4 : 2) * K; // rayons fins : flèches AB et A'B' bien plus épaisses
       ctx.setLineDash(construction ? [4 * K, 5 * K] : [10 * K, 7 * K]);
       ctx.beginPath();
       ctx.moveTo(sx(c.a.x), sy(c.a.y)); ctx.lineTo(sx(c.b.x), sy(c.b.y));
@@ -568,7 +588,7 @@
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
 
-    var head = Math.min(15 * K, view.w / 40);
+    var head = Math.min(12 * K, view.w / 45);
     // Flèches des rayons incidents décalées le long du segment : elles ne s'empilent pas près de B.
     var frac = { 1: 0.5, 2: 0.3, 3: 0.7 };
     solid.forEach(function (s) {
@@ -576,7 +596,7 @@
       if (!c) return;
       var x1 = sx(c.a.x), y1 = sy(c.a.y), x2 = sx(c.b.x), y2 = sy(c.b.y);
       ctx.strokeStyle = rayColor(s.ray);
-      ctx.lineWidth = 3 * K;
+      ctx.lineWidth = 2 * K;
       ctx.beginPath();
       ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
       ctx.stroke();
@@ -599,7 +619,7 @@
     var head = Math.min(19 * K, Math.max(0.4 * len, Math.min(9, 0.8 * len)));
     var stemEnd = y1 - dir * head * 0.8;
     ctx.strokeStyle = color;
-    ctx.lineWidth = 5 * K;
+    ctx.lineWidth = 5.5 * K; // flèches objet / image : au moins 2,5 fois l'épaisseur des rayons
     ctx.lineCap = dashed ? 'butt' : 'round';
     if (dashed) ctx.setLineDash([8 * K, 6 * K]);
     ctx.beginPath();
@@ -675,12 +695,158 @@
 
   function overlaps(a, b) { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
 
+
+  /* ---------------- Grandeurs : cotes de d_o, d_i, f, h_o, h_i ----------------
+     Case « Afficher les grandeurs ». Les traits sont dessinés sous les rayons,
+     les étiquettes (avec halo) au-dessus de tout. Niveaux sous l'axe : d_o au
+     niveau 1 ; d_i au niveau 1 (image réelle, à droite) ou 2 (virtuelle, à
+     gauche, sous d_o) ; f au premier niveau libre à droite. */
+
+  function qColor(name) { return theme['q-' + name] || theme.label; }
+
+  /** Hauteur (y écran) du niveau n de cotes sous l'axe. */
+  function coteLevelY(n) {
+    var L = labelSize();
+    return sy(0) + 17 * K + 1.5 * L + (n - 1) * (1.3 * L + 6 * K);
+  }
+
+  /** Symbole en italique + indice (+ texte facultatif), centré verticalement sur y. */
+  function symbolParts(main, sub, extra) {
+    var L = labelSize();
+    var parts = [{ t: main, font: 'italic 700 ' + (0.95 * L) + 'px ' + theme['font-canvas'], dy: 0 }];
+    if (sub) parts.push({ t: sub, font: '700 ' + (0.66 * L) + 'px ' + theme['font-canvas'], dy: 0.3 * L });
+    if (extra) parts.push({ t: extra, font: '600 ' + (0.72 * L) + 'px ' + theme['font-canvas'], dy: 0.05 * L });
+    var w = 0;
+    parts.forEach(function (p) { ctx.font = p.font; p.w = ctx.measureText(p.t).width; w += p.w; });
+    if (extra) w += 0.25 * L; // espace avant le texte ajouté
+    return { parts: parts, w: w, h: L };
+  }
+
+  function drawSymbol(sym, x, y, color, align) {
+    var x0 = align === 'right' ? x - sym.w : align === 'left' ? x : x - sym.w / 2;
+    var cx = x0;
+    ctx.fillStyle = color;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    sym.parts.forEach(function (p, i) {
+      if (i === 2) cx += 0.25 * labelSize();
+      ctx.font = p.font;
+      haloText(p.t, cx, y + p.dy);
+      cx += p.w;
+    });
+    return { x0: x0, y0: y - sym.h / 2, x1: x0 + sym.w, y1: y + sym.h / 2 + 0.3 * labelSize() };
+  }
+
+  /** Trait de cote avec flèches aux deux bouts (ou petits traits si trop court). */
+  function coteLine(xa, ya, xb, yb, color, dashed) {
+    var head = 9 * K;
+    var len = Math.hypot(xb - xa, yb - ya);
+    var ang = Math.atan2(yb - ya, xb - xa);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5 * K;
+    if (dashed) ctx.setLineDash([6 * K, 4 * K]);
+    ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke();
+    ctx.setLineDash([]);
+    if (len >= 2.6 * head) {
+      // pointes exactement sur les extrémités
+      arrowHead(xa + Math.cos(ang) * 0.6 * head, ya + Math.sin(ang) * 0.6 * head, ang + Math.PI, head, color);
+      arrowHead(xb - Math.cos(ang) * 0.6 * head, yb - Math.sin(ang) * 0.6 * head, ang, head, color);
+    } else {
+      var t = 5 * K, nx = -Math.sin(ang), ny = Math.cos(ang);
+      ctx.beginPath();
+      ctx.moveTo(xa - nx * t, ya - ny * t); ctx.lineTo(xa + nx * t, ya + ny * t);
+      ctx.moveTo(xb - nx * t, yb - ny * t); ctx.lineTo(xb + nx * t, yb + ny * t);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** Ligne de rappel fine (pointillés) entre un point du schéma et sa cote. */
+  function extLine(xa, ya, xb, yb, color) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.6;
+    ctx.lineWidth = 1 * K;
+    ctx.setLineDash([3 * K, 3 * K]);
+    ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Calcule les cotes à dessiner (coordonnées écran) pour l'état courant. */
+  function quantityCotes(img, visible) {
+    var list = [];
+    var xO = sx(0), y0 = sy(0), xA = sx(-state.dObj), yB = sy(state.hObj);
+    var realShown = visible && img.type === 'real';
+    var virtShown = visible && img.type === 'virtual';
+    var gap = 18 * K; // écart entre la flèche et sa cote verticale
+    list.push({ name: 'do', kind: 'h', x0: xA, x1: xO, y: coteLevelY(1), sym: ['d', 'o'], outside: -1 });
+    if (visible) {
+      var xI = sx(img.xImg), yBi = sy(img.hImg);
+      if (realShown) list.push({ name: 'di', kind: 'h', x0: xO, x1: xI, y: coteLevelY(1), sym: ['d', 'i'], outside: 1 });
+      else list.push({ name: 'di', kind: 'h', x0: xI, x1: xO, y: coteLevelY(2), sym: ['d', 'i', '(< 0)'], dashed: true, outside: -1 });
+      // Image réelle : cote à droite de A'B' (l'étiquette B' est sous la pointe) ;
+      // image virtuelle : à gauche (les prolongements arrivent par la droite).
+      var side = realShown ? 1 : -1;
+      list.push({ name: 'hi', kind: 'v', x: xI + side * gap, xPoint: xI, y0: y0, y1: yBi, sym: ['h', 'i'], dashed: virtShown, side: side });
+    }
+    if (state.showFoci) {
+      var lvl = realShown ? 2 : 1;
+      list.push({ name: 'f', kind: 'h', x0: xO, x1: sx(focal()), y: coteLevelY(lvl), sym: ['f', ''], outside: 1, vergence: true });
+    }
+    list.push({ name: 'ho', kind: 'v', x: xA - gap, xPoint: xA, y0: y0, y1: yB, sym: ['h', 'o'], side: -1 });
+    return list;
+  }
+
+  function drawQuantityLines(cotes) {
+    var y0 = sy(0);
+    cotes.forEach(function (c) {
+      var col = qColor(c.name === 'f' ? 'f' : c.name);
+      if (c.kind === 'h') {
+        extLine(c.x0, y0 + 4 * K, c.x0, c.y + 5 * K, col);
+        extLine(c.x1, y0 + 4 * K, c.x1, c.y + 5 * K, col);
+        coteLine(c.x0, c.y, c.x1, c.y, col, c.dashed);
+      } else {
+        extLine(c.xPoint, c.y1, c.x + c.side * 5 * K, c.y1, col); // rappel depuis la pointe B ou B'
+        coteLine(c.x, c.y0, c.x, c.y1, col, c.dashed);
+      }
+    });
+  }
+
+  function drawQuantityLabels(cotes) {
+    var L = labelSize();
+    cotes.forEach(function (c) {
+      var col = qColor(c.name);
+      var sym = symbolParts(c.sym[0], c.sym[1], c.sym[2]);
+      if (c.kind === 'h') {
+        var len = Math.abs(c.x1 - c.x0);
+        if (len >= sym.w + 4 * 9 * K) {
+          c.label = drawSymbol(sym, (c.x0 + c.x1) / 2, c.y, col, 'center');
+        } else if (c.outside < 0) {
+          c.label = drawSymbol(sym, Math.min(c.x0, c.x1) - 6 * K, c.y, col, 'right');
+        } else {
+          c.label = drawSymbol(sym, Math.max(c.x0, c.x1) + 6 * K, c.y, col, 'left');
+        }
+        if (c.vergence) {
+          // « V = 1/f » juste après la cote de f (V n'est pas une longueur)
+          var vx = Math.max(c.x1, c.label ? c.label.x1 : c.x1) + 10 * K;
+          var v = symbolParts('V', '', '= 1/f');
+          drawSymbol(v, vx, c.y, col, 'left');
+        }
+      } else {
+        c.label = drawSymbol(sym, c.x + c.side * 6 * K, (c.y0 + c.y1) / 2, col, c.side > 0 ? 'left' : 'right');
+      }
+    });
+  }
+
   /** Rectangle du badge, calculé avant de dessiner la lentille : en bas au centre,
    *  ou en haut au centre s'il toucherait la barre d'échelle ou un panneau. */
-  function badgeRect(text, obstacles) {
+  function badgeRect(text, obstacles, shortText) {
     var size = labelSize() + 2;
     ctx.font = fontPx(size, '700');
     var padX = 16 * K, padY = 8 * K, m = 16 * K;
+    // Texte court si le texte complet ne tient pas (téléphone).
+    if (shortText && ctx.measureText(text).width + 2 * padX > view.w - 2 * m) text = shortText;
     var w = ctx.measureText(text).width + 2 * padX, h = size + 2 * padY;
     var x = (view.w - w) / 2;
     var avoid = obstacles.concat([scaleBarRect()]);
@@ -705,6 +871,20 @@
     ctx.fillText(b.text, b.x0 + w / 2, b.y0 + h / 2 + 1);
   }
 
+  /** Décalage de la vue (cm) qui montre l'image, avec la lentille si possible.
+   *  null si l'image est trop loin, ou trop haute pour l'écran (le défilement est horizontal). */
+  function panTarget(img) {
+    if (img.type === 'infinity' || Math.abs(img.hImg) >= view.rect.ymax - 1) return null;
+    var span = halfSpan(), x = img.xImg;
+    // Lentille et image ensemble si possible ; sinon l'image un peu du côté de la lentille,
+    // loin des panneaux Mesures / Modèle (à droite).
+    var t = Math.abs(x) < 2 * span - 8 ? x / 2 : x + (x > 0 ? 1 : -1) * 0.15 * span;
+    t = clamp(Math.round(t), -PAN_LIMIT, PAN_LIMIT);
+    return Math.abs(x - t) < span - 2 ? t : null;
+  }
+
+  var badge = null; // badge courant (cliquable s'il porte une cible de défilement)
+
   function draw() {
     if (!view.rect) return;
     var f = focal();
@@ -719,15 +899,30 @@
 
     var obstacles = panelObstacles();
     computeScaleBarRight(obstacles);
-    var badge = null;
+    badge = null;
     if (!hasImage) badge = badgeRect("Image à l'infini", obstacles);
-    else if (!visible) badge = badgeRect('Image hors du champ', obstacles);
+    else if (!visible) {
+      var target = panTarget(img);
+      if (target === null) badge = badgeRect('Image hors du champ', obstacles);
+      else {
+        var right = img.xImg > view.panX;
+        badge = badgeRect('Image hors du champ : faites défiler vers la ' + (right ? 'droite →' : 'gauche ←'),
+          obstacles, right ? 'Image hors du champ →' : '← Image hors du champ');
+        badge.target = target;
+      }
+    }
     if (badge) obstacles.push(badge);
 
     drawGrid();
     drawAxis();
     var lensBox = drawLens(lensHalfHeight(rays, obstacles));
+    var cotes = state.showQuantities ? quantityCotes(img, visible) : [];
+    var isH = function (c) { return c.kind === 'h'; };
+    drawQuantityLines(cotes.filter(isH));   // cotes horizontales sous les rayons
     drawRays(rays);
+    // Cotes verticales au-dessus des rayons : la pointe de h_i reste visible
+    // sur le rayon 3, qui passe exactement par B'.
+    drawQuantityLines(cotes.filter(function (c) { return !isH(c); }));
     // Foyers et O après les rayons : points et étiquettes (avec halo) restent au-dessus.
     if (state.showFoci) {
       var feetX = [sx(-state.dObj)];
@@ -737,13 +932,19 @@
     axisLabel('O', sx(0) + 10 * K, 'left', 11 * K); // en bas à droite du centre optique
     var objBox = drawObject();
     var imgBox = visible ? drawImage(img) : null;
+    drawQuantityLabels(cotes);  // étiquettes au-dessus de tout (avec halo)
     drawScaleBar();
     if (badge) drawBadge(badge);
 
     ghostPanels([objBox, imgBox]);
 
     // Géométrie exposée pour les tests de mise en page (aucun effet visible).
-    canvas.setAttribute('data-geom', JSON.stringify({ lens: lensBox, object: objBox, image: imgBox, badge: badge }));
+    canvas.setAttribute('data-geom', JSON.stringify({ lens: lensBox, object: objBox, image: imgBox, badge: badge,
+      panX: view.panX, scale: view.scale, cx: view.cx, cy: view.cy,
+      cotes: cotes.map(function (c) {
+        return c.kind === 'h' ? { name: c.name, x0: c.x0, x1: c.x1, y: c.y, dashed: !!c.dashed }
+                              : { name: c.name, x: c.x, xPoint: c.xPoint, y0: c.y0, y1: c.y1, dashed: !!c.dashed };
+      }) }));
 
     updateReadouts(img, visible);
   }
@@ -808,10 +1009,8 @@
     if (img.type === 'infinity') {
       ro.dImg.textContent = "Image à l'infini";
       ro.hImg.textContent = "Image à l'infini";
-    } else if (!visible) {
-      ro.dImg.textContent = 'Image hors du champ';
-      ro.hImg.textContent = 'Image hors du champ';
     } else {
+      // Valeurs vraies même si l'image est hors de la vue (on peut la retrouver en faisant défiler).
       ro.dImg.innerHTML = 'd<sub>i</sub> = ' + formatCm(img.dImg);
       ro.hImg.textContent = formatCm(img.hImg);
     }
@@ -836,17 +1035,32 @@
     return p.y <= split ? 'tip' : 'body';
   }
 
+  function onBadge(p) {
+    return !!(badge && badge.target !== undefined &&
+      p.x >= badge.x0 && p.x <= badge.x1 && p.y >= badge.y0 && p.y <= badge.y1);
+  }
+
   canvas.addEventListener('pointerdown', function (e) {
     var p = pointerPos(e);
     var hit = hitTest(p, e.pointerType);
-    if (!hit) return;
+    if (!hit && onBadge(p)) {         // badge « hors du champ » : aller à l'image
+      e.preventDefault();
+      setPan(badge.target);
+      return;
+    }
+    if (!hit && e.button > 0) return;
     e.preventDefault();
     try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* capture facultative */ }
-    state.drag = {
-      mode: hit,
-      pointerId: e.pointerId,
-      offset: hit === 'body' ? wx(p.x) - (-state.dObj) : wy(p.y) - state.hObj
-    };
+    if (!hit) {
+      // Zone vide : glisser fait défiler la vue horizontalement.
+      state.drag = { mode: 'pan', pointerId: e.pointerId, startX: p.x, startPan: view.panX };
+    } else {
+      state.drag = {
+        mode: hit,
+        pointerId: e.pointerId,
+        offset: hit === 'body' ? wx(p.x) - (-state.dObj) : wy(p.y) - state.hObj
+      };
+    }
     canvas.style.cursor = 'grabbing';
     requestDraw();
   });
@@ -854,6 +1068,10 @@
   canvas.addEventListener('pointermove', function (e) {
     var p = pointerPos(e);
     if (state.drag && state.drag.pointerId === e.pointerId) {
+      if (state.drag.mode === 'pan') {
+        setPan(state.drag.startPan - (p.x - state.drag.startX) / view.scale);
+        return;
+      }
       if (state.drag.mode === 'body') {
         var x = wx(p.x) - state.drag.offset;
         state.dObj = clamp(snap(-x), D_MIN, dMax());
@@ -866,17 +1084,31 @@
     var hit = hitTest(p, e.pointerType);
     if (hit !== state.hover) {
       state.hover = hit;
-      canvas.style.cursor = hit ? 'grab' : 'default';
       requestDraw();
     }
+    canvas.style.cursor = hit ? 'grab' : onBadge(p) ? 'pointer' : 'default';
   });
+
+  // Pavé tactile (défilement horizontal) ou Maj + molette : fait défiler la vue.
+  canvas.addEventListener('wheel', function (e) {
+    var dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : (e.shiftKey ? e.deltaY : 0);
+    if (!dx) return;               // molette verticale seule : la page défile normalement
+    e.preventDefault();
+    var px = e.deltaMode === 1 ? dx * 16 : dx;
+    setPan(view.panX + px / view.scale);
+  }, { passive: false });
+
+  if (panRange) {
+    panRange.min = -PAN_LIMIT; panRange.max = PAN_LIMIT; panRange.value = 0;
+    panRange.addEventListener('input', function () { setPan(+panRange.value); });
+  }
 
   function endDrag(e) {
     if (!state.drag || state.drag.pointerId !== e.pointerId) return;
     state.drag = null;
-    var hit = hitTest(pointerPos(e), e.pointerType);
+    var p = pointerPos(e), hit = hitTest(p, e.pointerType);
     state.hover = e.pointerType === 'mouse' ? hit : null;
-    canvas.style.cursor = state.hover ? 'grab' : 'default';
+    canvas.style.cursor = state.hover ? 'grab' : onBadge(p) ? 'pointer' : 'default';
     requestDraw();
   }
   canvas.addEventListener('pointerup', endDrag);
@@ -909,6 +1141,15 @@
 
   var benchControl = document.getElementById('bench-control');
   if (benchControl) benchControl.hidden = !BENCH.enabled;
+
+  if (quantBox) {
+    quantBox.checked = false; // décochée au chargement ; « Réinitialiser » n'y touche pas
+    quantBox.addEventListener('change', function () {
+      state.showQuantities = quantBox.checked;
+      document.body.classList.toggle('show-quantities', state.showQuantities);
+      requestDraw();
+    });
+  }
   if (benchBox && BENCH.enabled) {
     benchBox.checked = false; // décochée au chargement (pas de restauration du navigateur)
     benchBox.addEventListener('change', function () {
@@ -939,6 +1180,7 @@
     state.hObj = clamp(DEFAULTS.hObj, H_MIN, hMax());
     state.showFoci = DEFAULTS.showFoci;
     fociBox.checked = DEFAULTS.showFoci;
+    setPan(0);
     requestDraw();
   });
 
