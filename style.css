@@ -338,6 +338,8 @@ body {
   cursor: pointer;
 }
 
+.control[hidden] { display: none; } /* ex. case du banc d'optique tant que la photo manque */
+
 .control-check input {
   width: 1.15em;
   height: 1.15em;

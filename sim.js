@@ -152,8 +152,16 @@
 
   /* Photo du banc d'optique (fond facultatif). Coordonnées en pixels de l'image :
      lensX, axisY = centre de la lentille sur l'axe optique ; pxPerCm = pixels de
-     l'image par cm réel. VALEURS PROVISOIRES, à remplacer par les mesures. */
-  var BENCH = { src: 'banc_optique.jpg', imgW: 2400, imgH: 1000, lensX: 1200, axisY: 500, pxPerCm: 10 };
+     l'image par cm réel.
+     enabled : mettre true et renseigner imgW/imgH/lensX/axisY/pxPerCm quand
+     banc_optique.jpg est ajouté dans le dossier du site. Tant que enabled vaut
+     false, la case « Afficher le banc d'optique » n'apparaît pas.
+     Les valeurs ci-dessous sont PROVISOIRES. */
+  var BENCH = {
+    enabled: false,
+    src: 'banc_optique.jpg',
+    imgW: 2400, imgH: 1000, lensX: 1200, axisY: 500, pxPerCm: 10
+  };
 
   var canvas = document.getElementById('scene');
   var ctx = canvas.getContext('2d');
@@ -316,7 +324,7 @@
   /** Photo du banc : le point (lensX, axisY) de l'image tombe sur le centre O,
    *  échelle = (px écran par cm) / (px image par cm). */
   function drawBench() {
-    if (!state.showBench || !benchReady) return;
+    if (!BENCH.enabled || !state.showBench || !benchReady) return;
     var w = BENCH.imgW || benchImg.naturalWidth, h = BENCH.imgH || benchImg.naturalHeight;
     var k = view.scale / BENCH.pxPerCm;
     ctx.save();
@@ -326,7 +334,7 @@
   }
 
   function loadBench() {
-    if (benchImg) return;
+    if (benchImg || !BENCH.enabled) return;
     benchImg = new Image();
     benchImg.onload = function () { benchReady = true; requestDraw(); };
     benchImg.onerror = function () {
@@ -867,7 +875,9 @@
     requestDraw();
   });
 
-  if (benchBox) {
+  var benchControl = document.getElementById('bench-control');
+  if (benchControl) benchControl.hidden = !BENCH.enabled;
+  if (benchBox && BENCH.enabled) {
     benchBox.checked = false; // décochée au chargement (pas de restauration du navigateur)
     benchBox.addEventListener('change', function () {
       state.showBench = benchBox.checked;
