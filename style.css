@@ -497,6 +497,26 @@ body.show-quantities .q-hi { color: var(--q-hi); }
   border-radius: 2px;
 }
 
+/* Chaque rayon s'affiche ou se masque avec sa case dans la légende */
+.ray-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  cursor: pointer;
+}
+
+.ray-toggle input {
+  flex: 0 0 auto;
+  width: 1.1em;
+  height: 1.1em;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.ray-toggle input:not(:checked) ~ span { opacity: 0.4; }
+.ray-toggle input:focus-visible { outline: 3px solid var(--accent-2); outline-offset: 2px; }
+
 .swatch-ray1 { color: var(--ray1); }
 .swatch-ray2 { color: var(--ray2); }
 .swatch-ray3 { color: var(--ray3); }

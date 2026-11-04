@@ -200,6 +200,7 @@
     showFoci: fociBox.checked,
     showBench: false,
     showQuantities: false,
+    rays: { 1: true, 2: true, 3: true }, // cases de la légende « Rayons »
     drag: null,     // { mode: 'body' | 'tip', offset, pointerId }
     hover: null,    // 'body' | 'tip' | null
     legendTouched: false,
@@ -568,8 +569,9 @@
 
   function drawRays(rays) {
     var r = view.rect;
-    var dashed = rays.segments.filter(function (s) { return s.kind === 'extension' || s.kind === 'construction'; });
-    var solid = rays.segments.filter(function (s) { return s.kind === 'incident' || s.kind === 'refracted'; });
+    var shown = rays.segments.filter(function (s) { return state.rays[s.ray]; }); // rayons masqués : ni trait ni prolongement
+    var dashed = shown.filter(function (s) { return s.kind === 'extension' || s.kind === 'construction'; });
+    var solid = shown.filter(function (s) { return s.kind === 'incident' || s.kind === 'refracted'; });
 
     ctx.lineCap = 'round';
     dashed.forEach(function (s) {
@@ -1170,6 +1172,18 @@
     model.addEventListener('toggle', requestDraw);
   }
 
+  var rayBoxes = {};
+  [1, 2, 3].forEach(function (k) {
+    var box = document.getElementById('show-ray' + k);
+    if (!box) return;
+    rayBoxes[k] = box;
+    box.checked = true; // tous les rayons affichés au chargement
+    box.addEventListener('change', function () {
+      state.rays[k] = box.checked;
+      requestDraw();
+    });
+  });
+
   fociBox.addEventListener('change', function () {
     state.showFoci = fociBox.checked;
     requestDraw();
@@ -1181,6 +1195,10 @@
     state.showFoci = DEFAULTS.showFoci;
     fociBox.checked = DEFAULTS.showFoci;
     setPan(0);
+    [1, 2, 3].forEach(function (k) {
+      state.rays[k] = true;
+      if (rayBoxes[k]) rayBoxes[k].checked = true;
+    });
     requestDraw();
   });
 
