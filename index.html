@@ -43,9 +43,18 @@
         <input type="checkbox" id="show-foci" checked>
         <span>Afficher les foyers F et F'</span>
       </label>
+      <label class="control control-check">
+        <input type="checkbox" id="show-model" checked>
+        <span>Afficher la loi</span>
+      </label>
+      <label class="control control-check">
+        <input type="checkbox" id="show-bench">
+        <span>Afficher le banc d'optique</span>
+      </label>
       <button type="button" id="reset-btn" class="btn">Réinitialiser</button>
     </div>
 
+    <div class="side-stack">
     <aside class="panel panel-readouts" aria-label="Mesures">
       <h2 class="panel-title">Mesures</h2>
       <div class="readouts">
@@ -71,6 +80,42 @@
         </div>
       </div>
     </aside>
+
+    <details class="panel panel-model" id="model" open>
+      <summary class="panel-title">Modèle</summary>
+      <div class="model">
+        <p class="formula formula-main">
+          <span class="frac"><span>1</span><span><var>f</var></span></span>
+          <span class="op">=</span>
+          <span class="frac"><span>1</span><span><var>d</var><sub>o</sub></span></span>
+          <span class="op">+</span>
+          <span class="frac"><span>1</span><span><var>d</var><sub>i</sub></span></span>
+        </p>
+        <div class="formula-row">
+          <p class="formula">
+            <span class="frac"><span><var>h</var><sub>i</sub></span><span><var>h</var><sub>o</sub></span></span>
+            <span class="op">=</span>
+            <span class="frac"><span><var>d</var><sub>i</sub></span><span><var>d</var><sub>o</sub></span></span>
+          </p>
+          <p class="formula">
+            <var>V</var>
+            <span class="op">=</span>
+            <span class="frac"><span>1</span><span><var>f</var></span></span>
+          </p>
+        </div>
+        <p class="formula-unit">(<var>f</var> en mètres, <var>V</var> en dioptries δ)</p>
+        <p class="model-note" id="model-note">Image virtuelle&nbsp;: <var>d</var><sub>i</sub> est compté négativement dans la formule.</p>
+        <ul class="model-symbols">
+          <li><var>f</var>&nbsp;: distance focale de la lentille</li>
+          <li><var>d</var><sub>o</sub>&nbsp;: distance objet-lentille</li>
+          <li><var>d</var><sub>i</sub>&nbsp;: distance image-lentille</li>
+          <li><var>h</var><sub>o</sub>&nbsp;: taille de l'objet</li>
+          <li><var>h</var><sub>i</sub>&nbsp;: taille de l'image</li>
+          <li><var>V</var>&nbsp;: vergence de la lentille</li>
+        </ul>
+      </div>
+    </details>
+    </div>
 
     <details class="panel panel-legend" id="legend" open>
       <summary class="panel-title">Rayons</summary>

@@ -150,13 +150,26 @@
   var TOUCH_TARGET = 48;     // zone de saisie au doigt / stylet (px CSS, invisible)
   var DEFAULTS = { dObj: 30, hObj: 5, showFoci: true };
 
+  /* Photo du banc d'optique (fond facultatif). Coordonnées en pixels de l'image :
+     lensX, axisY = centre de la lentille sur l'axe optique ; pxPerCm = pixels de
+     l'image par cm réel. VALEURS PROVISOIRES, à remplacer par les mesures. */
+  var BENCH = { src: 'banc_optique.jpg', imgW: 2400, imgH: 1000, lensX: 1200, axisY: 500, pxPerCm: 10 };
+
   var canvas = document.getElementById('scene');
   var ctx = canvas.getContext('2d');
   var lensSelect = document.getElementById('lens-select');
   var fociBox = document.getElementById('show-foci');
   var resetBtn = document.getElementById('reset-btn');
   var legend = document.getElementById('legend');
-  var floatingPanels = Array.prototype.slice.call(document.querySelectorAll('.workspace > .panel'));
+  var model = document.getElementById('model');
+  var modelBox = document.getElementById('show-model');
+  var benchBox = document.getElementById('show-bench');
+  var benchImg = null;       // chargée seulement à la première activation
+  var benchReady = false;
+  var modelNote = document.getElementById('model-note');
+  var sideStack = document.querySelector('.side-stack');
+  // Blocs qui peuvent flotter sur la scène (position absolue sur grand écran).
+  var floatingPanels = Array.prototype.slice.call(document.querySelectorAll('.panel-controls, .side-stack, .panel-legend'));
   var ro = {
     dObj: document.getElementById('ro-do'),
     dImg: document.getElementById('ro-di'),
@@ -170,9 +183,11 @@
     dObj: DEFAULTS.dObj,
     hObj: DEFAULTS.hObj,
     showFoci: fociBox.checked,
+    showBench: false,
     drag: null,     // { mode: 'body' | 'tip', offset, pointerId }
     hover: null,    // 'body' | 'tip' | null
-    legendTouched: false
+    legendTouched: false,
+    modelTouched: false
   };
 
   var view = { w: 0, h: 0, dpr: 1, scale: 1, cx: 0, cy: 0, rect: null };
@@ -188,6 +203,8 @@
     if (!theme['font-canvas']) theme['font-canvas'] = 'system-ui, sans-serif';
     // --canvas-label-size peut contenir clamp(...) : on lit la valeur calculée sur le canevas.
     theme.labelPx = parseFloat(getComputedStyle(canvas).fontSize) || 16;
+    var bo = parseFloat(cs.getPropertyValue('--bench-opacity'));
+    theme.benchOpacity = isNaN(bo) ? 0.3 : bo;
     K = Math.max(0.85, theme.labelPx / 16);
   }
 
@@ -208,21 +225,36 @@
 
   function isFloating(el) { return getComputedStyle(el).position === 'absolute'; }
 
-  /** Légende repliée automatiquement si la scène est basse (sauf choix de l'élève). */
-  function updateLegend() {
-    if (!legend || state.legendTouched) return;
-    // Ouverte si tout est empilé (téléphone, tablette en portrait) ou si la scène est assez haute.
+  /** Légende et modèle repliés automatiquement quand la place manque
+   *  (sauf si l'élève a lui-même ouvert ou fermé le panneau). */
+  function updateCollapsibles() {
     var stacked = window.matchMedia && window.matchMedia('(max-width: 800px)').matches;
-    var want;
-    if (stacked) want = true;
-    else if (isFloating(legend)) want = view.h >= LEGEND_MIN_STAGE_H;
-    else {
-      // Colonne de droite (écran étroit ou bas) : ouverte s'il reste la place sous les mesures.
-      var ws = legend.parentNode.getBoundingClientRect();
-      var rd = document.querySelector('.panel-readouts').getBoundingClientRect();
-      want = ws.bottom - rd.bottom >= 13 * theme.labelPx;
+    var legendAuto = legend && !state.legendTouched;
+    var modelAuto = model && !model.hidden && !state.modelTouched && !cover.collapsed;
+    if (stacked) {
+      if (legendAuto) legend.open = true;
+      if (modelAuto) model.open = true;
+      return;
     }
-    if (legend.open !== want) legend.open = want;
+    var ws = sideStack.parentNode.getBoundingClientRect();
+    if (isFloating(sideStack)) {
+      // Panneaux flottants : légende selon la hauteur de la scène ; le modèle reste
+      // au-dessus de la barre d'échelle, sinon il est replié.
+      if (legendAuto) legend.open = view.h >= LEGEND_MIN_STAGE_H;
+      if (modelAuto) {
+        model.open = true;
+        // La barre d'échelle se décale à gauche du panneau : il peut descendre jusqu'au bas de la scène.
+        var gapPx = parseFloat(getComputedStyle(sideStack).top) || 10;
+        if (sideStack.getBoundingClientRect().bottom > ws.bottom - gapPx) model.open = false;
+      }
+    } else {
+      // Colonne de droite (écran étroit ou bas) : on ouvre ce qui tient, la légende cède en premier.
+      if (legendAuto) legend.open = true;
+      if (modelAuto) model.open = true;
+      var bottom = function (el) { return el.getBoundingClientRect().bottom; };
+      if (legendAuto && bottom(legend) > ws.bottom - 2) legend.open = false;
+      if (modelAuto && bottom(legend) > ws.bottom - 2) model.open = false;
+    }
   }
 
   function resize() {
@@ -242,7 +274,7 @@
     state.hObj = clamp(state.hObj, H_MIN, hMax());
     state.dObj = clamp(state.dObj, D_MIN, dMax());
     readTheme();
-    updateLegend();
+    updateCollapsibles();
     draw();
   }
 
@@ -281,6 +313,28 @@
     ctx.fillRect(0, 0, view.w, view.h);
   }
 
+  /** Photo du banc : le point (lensX, axisY) de l'image tombe sur le centre O,
+   *  échelle = (px écran par cm) / (px image par cm). */
+  function drawBench() {
+    if (!state.showBench || !benchReady) return;
+    var w = BENCH.imgW || benchImg.naturalWidth, h = BENCH.imgH || benchImg.naturalHeight;
+    var k = view.scale / BENCH.pxPerCm;
+    ctx.save();
+    ctx.globalAlpha = theme.benchOpacity;
+    ctx.drawImage(benchImg, sx(0) - BENCH.lensX * k, sy(0) - BENCH.axisY * k, w * k, h * k);
+    ctx.restore();
+  }
+
+  function loadBench() {
+    if (benchImg) return;
+    benchImg = new Image();
+    benchImg.onload = function () { benchReady = true; requestDraw(); };
+    benchImg.onerror = function () {
+      if (window.console) console.warn('Image du banc introuvable : ' + BENCH.src);
+    };
+    benchImg.src = BENCH.src;
+  }
+
   function drawGrid() {
     var r = view.rect;
     var minorVisible = view.scale >= 4;
@@ -315,16 +369,26 @@
   }
 
   // Barre d'échelle en bas à droite (le bas gauche est occupé par la légende).
+  // Bord droit disponible pour la barre d'échelle : à gauche des panneaux qui descendent en bas à droite.
+  var scaleBarRight = 0;
+  function computeScaleBarRight(obstacles) {
+    var m = 18 * K, right = view.w - m, zoneTop = view.h - 4 * labelSize();
+    obstacles.forEach(function (o) {
+      if (o.y1 > zoneTop && o.x1 > view.w / 2) right = Math.min(right, o.x0 - m);
+    });
+    scaleBarRight = right;
+  }
+
   function scaleBarRect() {
     var len = 10 * view.scale, m = 18 * K, t = 5 * K;
-    var x0 = view.w - m - len, y0 = view.h - m;
+    var x0 = (scaleBarRight || view.w - m) - len, y0 = view.h - m;
     return { x0: x0 - labelSize(), y0: y0 - t - 2 - labelSize(), x1: x0 + len + labelSize(), y1: y0 + t };
   }
 
   function drawScaleBar() {
     var len = 10 * view.scale;
     var m = 18 * K;
-    var x0 = view.w - m - len, y0 = view.h - m;
+    var x0 = (scaleBarRight || view.w - m) - len, y0 = view.h - m;
     var t = 5 * K;
     ctx.strokeStyle = theme.scalebar;
     ctx.fillStyle = theme.scalebar;
@@ -611,8 +675,10 @@
 
     ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
     drawBackground();
+    drawBench();
 
     var obstacles = panelObstacles();
+    computeScaleBarRight(obstacles);
     var badge = null;
     if (!hasImage) badge = badgeRect("Image à l'infini", obstacles);
     else if (!visible) badge = badgeRect('Image hors du champ', obstacles);
@@ -642,21 +708,58 @@
     updateReadouts(img, visible);
   }
 
-  /** Un panneau flottant qui recouvre l'objet ou l'image devient presque
-   *  transparent (il redevient opaque au survol ou au clavier). */
+  function relRect(el) {
+    var c = canvas.getBoundingClientRect(), r = el.getBoundingClientRect();
+    return { x0: r.left - c.left, y0: r.top - c.top, x1: r.right - c.left, y1: r.bottom - c.top };
+  }
+
+  function hitsAny(rect, boxes) {
+    return !!rect && boxes.some(function (b) { return b && overlaps(rect, b); });
+  }
+
+  /** Réglages et légende flottants : presque transparents s'ils recouvrent l'objet
+   *  ou l'image (opaques au survol). Les Mesures ne s'estompent jamais. */
   function ghostPanels(boxes) {
-    var c = canvas.getBoundingClientRect();
     floatingPanels.forEach(function (el) {
-      var covers = false;
-      if (isFloating(el)) {
-        var r = el.getBoundingClientRect();
-        var p = { x0: r.left - c.left, y0: r.top - c.top, x1: r.right - c.left, y1: r.bottom - c.top };
-        covers = boxes.some(function (b) {
-          return b && p.x0 < b.x1 && b.x0 < p.x1 && p.y0 < b.y1 && b.y0 < p.y1;
-        });
-      }
-      el.classList.toggle('is-ghost', covers);
+      if (el === sideStack) { el.classList.remove('is-ghost'); return; }
+      el.classList.toggle('is-ghost', isFloating(el) && hitsAny(relRect(el), boxes));
     });
+    handleModelCover(boxes);
+  }
+
+  /** Modèle flottant au-dessus de l'objet ou de l'image : on le replie sur son titre
+   *  (sauf si l'élève l'a rouvert pendant ce temps), et on le rouvre quand la place
+   *  redevient libre. S'il gêne encore une fois replié, seul le Modèle s'estompe. */
+  var cover = { collapsed: false, openRect: null, forcedOpen: false };
+  function handleModelCover(boxes) {
+    if (!model || model.hidden || !isFloating(sideStack)) {
+      cover.collapsed = false; cover.forcedOpen = false; cover.openRect = null;
+      if (model) model.classList.remove('is-ghost');
+      return;
+    }
+    var rect = relRect(model);
+    var ghost = false;
+    if (cover.collapsed) {
+      if (model.open) {
+        // L'élève l'a rouvert pendant que l'image est dessous : on le laisse, estompé.
+        cover.collapsed = false; cover.forcedOpen = true;
+        ghost = hitsAny(rect, boxes);
+      } else if (hitsAny(cover.openRect, boxes)) {
+        ghost = hitsAny(rect, boxes);           // toujours sous le titre replié ?
+      } else {
+        cover.collapsed = false; cover.openRect = null;
+        model.open = true;                       // place libre : on rouvre
+        updateCollapsibles();                    // ... sauf si la hauteur manque
+      }
+    } else if (model.open) {
+      if (hitsAny(rect, boxes)) {
+        if (cover.forcedOpen) ghost = true;
+        else { cover.collapsed = true; cover.openRect = rect; model.open = false; }
+      } else {
+        cover.forcedOpen = false;
+      }
+    }
+    model.classList.toggle('is-ghost', ghost);
   }
 
   function updateReadouts(img, visible) {
@@ -673,6 +776,7 @@
       ro.hImg.textContent = formatCm(img.hImg);
     }
     ro.nature.textContent = natureText(img, state.hObj);
+    if (modelNote) modelNote.classList.toggle('is-active', img.type === 'virtual');
   }
 
   /* ---------------- Interaction ---------------- */
@@ -763,6 +867,26 @@
     requestDraw();
   });
 
+  if (benchBox) {
+    benchBox.checked = false; // décochée au chargement (pas de restauration du navigateur)
+    benchBox.addEventListener('change', function () {
+      state.showBench = benchBox.checked;
+      if (state.showBench) loadBench();
+      requestDraw();
+    });
+  }
+
+  if (modelBox && model) {
+    model.hidden = !modelBox.checked;
+    modelBox.addEventListener('change', function () {
+      model.hidden = !modelBox.checked;
+      updateCollapsibles();
+      requestDraw();
+    });
+    model.querySelector('summary').addEventListener('click', function () { state.modelTouched = true; });
+    model.addEventListener('toggle', requestDraw);
+  }
+
   fociBox.addEventListener('change', function () {
     state.showFoci = fociBox.checked;
     requestDraw();
@@ -797,6 +921,6 @@
   resize();
   // Redessiner quand les polices web sont chargées (repli system-ui sinon).
   if (document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(function () { readTheme(); requestDraw(); });
+    document.fonts.ready.then(function () { readTheme(); updateCollapsibles(); requestDraw(); });
   }
 })();

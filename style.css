@@ -29,18 +29,21 @@
   --text: #0F151A;
   --muted: #475966;
   --label-muted: #738B99;
-  --panel: rgba(255, 255, 255, 0.88); /* les rayons transparaissent sous les panneaux */
+  --panel: rgba(255, 255, 255, 0.95); /* les rayons transparaissent à peine sous les panneaux */
   --panel-border: #D5E1ED;
   --panel-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.10), 0 8px 10px -6px rgba(0, 0, 0, 0.10);
   --radius: 16px;
   --chip-bg: #EFF5FB;
   --chip-text: #475966;
   --hint-bg: #EFF5FB;
+  --note-bg: #FFE9A8;        /* note « image virtuelle » mise en évidence */
+  --note-text: #5C4500;
   --accent: #476EE4;
   --accent-2: #5880F1;
   --accent-text: #ffffff;
 
   /* Canevas */
+  --bench-opacity: 0.3;      /* photo du banc d'optique, derrière la grille */
   --scene-top: #F6FAFE;
   --scene-bottom: #EAF1F9;
   --grid: rgba(71, 110, 228, 0.10);
@@ -153,7 +156,7 @@ body {
 }
 
 .panel-controls,
-.panel-readouts,
+.side-stack,
 .panel-legend {
   position: absolute;
   z-index: 1;
@@ -161,12 +164,12 @@ body {
 
 /* Panneau qui recouvre l'objet ou l'image : presque transparent (sim.js) */
 .panel-controls,
-.panel-readouts,
+.side-stack,
 .panel-legend { transition: opacity 0.2s; }
 
-.panel.is-ghost { opacity: 0.3; }
-.panel.is-ghost:hover,
-.panel.is-ghost:focus-within { opacity: 1; }
+.is-ghost { opacity: 0.3; }
+.is-ghost:hover,
+.is-ghost:focus-within { opacity: 1; }
 
 .panel-controls {
   top: var(--gap);
@@ -179,10 +182,14 @@ body {
   font-size: var(--fs-ui);
 }
 
-.panel-readouts {
+/* Colonne de droite : Mesures puis Modèle */
+.side-stack {
   top: var(--gap);
   right: var(--gap);
   width: var(--readouts-w);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
 }
 
 .panel-legend {
@@ -201,7 +208,8 @@ body {
   color: var(--label-muted);
 }
 
-/* Légende repliable */
+/* Panneaux repliables (légende, modèle) */
+.panel-model summary,
 .panel-legend summary {
   cursor: pointer;
   list-style: none;
@@ -210,8 +218,10 @@ body {
   gap: 0.5em;
 }
 
+.panel-model summary::-webkit-details-marker,
 .panel-legend summary::-webkit-details-marker { display: none; }
 
+.panel-model summary::after,
 .panel-legend summary::after {
   content: "";
   width: 0.45em;
@@ -222,9 +232,83 @@ body {
   transition: transform 0.15s;
 }
 
+.panel-model[open] summary::after,
 .panel-legend[open] summary::after { transform: rotate(45deg); }
 
+.panel-model:not([open]) summary,
 .panel-legend:not([open]) summary { margin-bottom: 0; }
+
+.panel-model[hidden] { display: none; }
+
+/* Modèle : la loi utilisée par la simulation (formules seulement) */
+.model var { font-style: italic; font-family: var(--font-body); }
+
+.formula-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 1.4em;
+}
+
+.formula {
+  margin: 0 0 0.35em;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35em;
+  font-size: var(--fs-ui);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.formula-main { font-size: calc(var(--fs-ui) * 1.25); }
+
+.frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+}
+
+.frac > span:first-child {
+  border-bottom: 2px solid currentColor;
+  padding: 0 0.2em;
+}
+
+.formula-unit {
+  margin: 0 0 0.3em;
+  font-size: var(--fs-label);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.model-note {
+  margin: 0 0 0.4em;
+  padding: 0.25em 0.6em;
+  line-height: 1.25;
+  border-radius: 10px;
+  font-size: var(--fs-label);
+  color: var(--label-muted);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.model-note.is-active {
+  background: var(--note-bg);
+  color: var(--note-text);
+  font-weight: 600;
+}
+
+.model-symbols {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05em;
+  line-height: 1.25;
+  font-size: var(--fs-label);
+  color: var(--muted);
+}
 
 /* Réglages */
 .control {
@@ -404,7 +488,7 @@ body {
     grid-row: 1 / -1;
   }
 
-  .panel-readouts,
+  .side-stack,
   .panel-legend {
     position: static;
     grid-column: 2;
@@ -449,13 +533,15 @@ body {
   .panel-controls { order: -1; }
 
   .panel-controls,
-  .panel-readouts,
+  .side-stack,
   .panel-legend {
     position: static;
     width: auto;
     max-width: none;
     margin: 0 12px;
   }
+
+  .side-stack { gap: 12px; }
 
   .readouts {
     display: grid;
