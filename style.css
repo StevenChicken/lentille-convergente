@@ -43,7 +43,7 @@
   --accent-text: #ffffff;
 
   /* Canevas */
-  --bench-opacity: 0.3;      /* photo du banc d'optique, derrière la grille */
+  --bench-opacity: 0.35;      /* photo du banc d'optique, derrière la grille */
   --scene-top: #F6FAFE;
   --scene-bottom: #EAF1F9;
   --grid: rgba(71, 110, 228, 0.10);

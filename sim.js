@@ -150,17 +150,21 @@
   var TOUCH_TARGET = 48;     // zone de saisie au doigt / stylet (px CSS, invisible)
   var DEFAULTS = { dObj: 30, hObj: 5, showFoci: true };
 
-  /* Photo du banc d'optique (fond facultatif). Coordonnées en pixels de l'image :
-     lensX, axisY = centre de la lentille sur l'axe optique ; pxPerCm = pixels de
-     l'image par cm réel.
-     enabled : mettre true et renseigner imgW/imgH/lensX/axisY/pxPerCm quand
-     banc_optique.jpg est ajouté dans le dossier du site. Tant que enabled vaut
-     false, la case « Afficher le banc d'optique » n'apparaît pas.
-     Les valeurs ci-dessous sont PROVISOIRES. */
+  /* Photo du banc d'optique (fond facultatif), dessinée sous la grille.
+     Coordonnées continues de l'image (bord gauche du pixel 0 = 0) :
+     lensX, axisY = centre du verre de la lentille (pixels 756..781 en x,
+     459..600 en y : centre 768,5 + 0,5 et 529,5 + 0,5) ;
+     pxPerCm = (lensX - axe de la flèche de la lampe, 182,98 + 0,5) / 30 cm,
+     pour que la flèche de la lampe tombe sous l'objet AB à d_o = 30 cm.
+     enabled : mettre false pour masquer la case « Afficher le banc d'optique »
+     (par ex. si banc_optique.jpg est retiré du dossier du site). */
   var BENCH = {
-    enabled: false,
+    enabled: true,
     src: 'banc_optique.jpg',
-    imgW: 2400, imgH: 1000, lensX: 1200, axisY: 500, pxPerCm: 10
+    imgW: 1536, imgH: 1024,
+    lensX: 769.0, axisY: 530.0,
+    pxPerCm: (769.0 - 183.48) / 30, // = 19,517 px par cm
+    feather: 0.08                   // fondu des bords (part de la largeur)
   };
 
   var canvas = document.getElementById('scene');
@@ -329,14 +333,42 @@
     var k = view.scale / BENCH.pxPerCm;
     ctx.save();
     ctx.globalAlpha = theme.benchOpacity;
-    ctx.drawImage(benchImg, sx(0) - BENCH.lensX * k, sy(0) - BENCH.axisY * k, w * k, h * k);
+    ctx.drawImage(benchFeathered || benchImg, sx(0) - BENCH.lensX * k, sy(0) - BENCH.axisY * k, w * k, h * k);
     ctx.restore();
+  }
+
+  /** Copie de la photo avec les 4 bords en fondu (masque alpha), préparée une fois. */
+  var benchFeathered = null;
+  function featherBench() {
+    var w = BENCH.imgW || benchImg.naturalWidth, h = BENCH.imgH || benchImg.naturalHeight;
+    var off = document.createElement('canvas');
+    off.width = w; off.height = h;
+    var c = off.getContext('2d');
+    c.drawImage(benchImg, 0, 0, w, h);
+    var f = BENCH.feather * w;               // même largeur de fondu sur les 4 côtés
+    c.globalCompositeOperation = 'destination-in';
+    var gx = c.createLinearGradient(0, 0, w, 0);
+    gx.addColorStop(0, 'rgba(0,0,0,0)');
+    gx.addColorStop(f / w, 'rgba(0,0,0,1)');
+    gx.addColorStop(1 - f / w, 'rgba(0,0,0,1)');
+    gx.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = gx; c.fillRect(0, 0, w, h);
+    var gy = c.createLinearGradient(0, 0, 0, h);
+    gy.addColorStop(0, 'rgba(0,0,0,0)');
+    gy.addColorStop(f / h, 'rgba(0,0,0,1)');
+    gy.addColorStop(1 - f / h, 'rgba(0,0,0,1)');
+    gy.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = gy; c.fillRect(0, 0, w, h);
+    benchFeathered = off;
   }
 
   function loadBench() {
     if (benchImg || !BENCH.enabled) return;
     benchImg = new Image();
-    benchImg.onload = function () { benchReady = true; requestDraw(); };
+    benchImg.onload = function () {
+      try { featherBench(); } catch (e) { benchFeathered = null; } // repli : photo sans fondu
+      benchReady = true; requestDraw();
+    };
     benchImg.onerror = function () {
       if (window.console) console.warn('Image du banc introuvable : ' + BENCH.src);
     };
