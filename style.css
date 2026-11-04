@@ -1,5 +1,5 @@
 /* ==========================================================
-   Thème : toutes les couleurs et polices sont ici.
+   Thème : toutes les couleurs, polices et tailles sont ici.
    sim.js lit ces variables (getComputedStyle) pour dessiner
    le canevas : pour changer l'apparence, modifier seulement
    ce bloc :root.
@@ -9,7 +9,17 @@
   --font-heading: "Quicksand", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   --font-canvas: "Quicksand", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-  --canvas-label-size: 12px;
+
+  /* Tailles : elles suivent la largeur de l'écran (lisibles au projecteur) */
+  --fs-title: clamp(20px, 1.6vw, 40px);
+  --fs-hint: clamp(15px, 1.3vw, 30px);
+  --fs-ui: clamp(15px, 1.2vw, 32px);      /* réglages, valeurs */
+  --fs-label: clamp(12px, 0.9vw, 24px);   /* petites étiquettes */
+  --fs-legend: clamp(15px, 1vw, 26px);
+  --canvas-label-size: clamp(18px, 1.5vw, 36px); /* A, B, A', B', O, F, F' ; épaisseurs proportionnelles */
+  --gap: clamp(10px, 1vw, 32px);          /* marge des panneaux flottants */
+  --pad: clamp(10px, 0.8vw, 26px);        /* marge intérieure des panneaux */
+  --readouts-w: clamp(230px, 17vw, 580px);
 
   /* Interface */
   --bg: #F6FAFE;
@@ -19,12 +29,13 @@
   --text: #0F151A;
   --muted: #475966;
   --label-muted: #738B99;
-  --panel: #ffffff;
+  --panel: rgba(255, 255, 255, 0.88); /* les rayons transparaissent sous les panneaux */
   --panel-border: #D5E1ED;
   --panel-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.10), 0 8px 10px -6px rgba(0, 0, 0, 0.10);
   --radius: 16px;
   --chip-bg: #EFF5FB;
   --chip-text: #475966;
+  --hint-bg: #EFF5FB;
   --accent: #476EE4;
   --accent-2: #5880F1;
   --accent-text: #ffffff;
@@ -32,19 +43,20 @@
   /* Canevas */
   --scene-top: #F6FAFE;
   --scene-bottom: #EAF1F9;
-  --grid: rgba(71, 110, 228, 0.07);
-  --grid-major: rgba(71, 110, 228, 0.14);
-  --axis: #8A98A6;
+  --grid: rgba(71, 110, 228, 0.10);
+  --grid-major: rgba(71, 110, 228, 0.22);
+  --axis: #6B7A89;
   --lens: #5568C8;
   --lens-fill: rgba(123, 143, 224, 0.25);
   --focal-fill: #FFD75E;
   --focal-stroke: #8A6D1F;
   --label: #0F151A;
+  --label-halo: #ffffff;     /* halo sous les étiquettes du canevas */
   --scalebar: #475966;
   --object: #E6B844;
   --handle-fill: #ffffff;
   --image: #008F87;          /* image réelle */
-  --image-virtual: #77C7C1;  /* image virtuelle */
+  --image-virtual: #008F87;  /* image virtuelle (en tirets) */
   --ray1: #E5484D;
   --ray2: #476EE4;
   --ray3: #2FA36B;
@@ -60,8 +72,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
-  font-size: 14px;
-  line-height: 1.4;
+  font-size: var(--fs-ui);
+  line-height: 1.3;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -75,22 +87,45 @@ body {
   z-index: 2;
   background: var(--header-bg);
   box-shadow: var(--header-shadow);
-  padding: 14px 20px;
+  padding: calc(var(--pad) * 0.9) calc(var(--gap) + 4px);
 }
 
 .app-header h1 {
   margin: 0;
   font-family: var(--font-heading);
-  font-size: 20px;
+  font-size: var(--fs-title);
   font-weight: 700;
   color: var(--heading);
+}
+
+/* Consigne : bien visible, juste sous l'en-tête */
+.hint-bar {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6em;
+  padding: 0.45em var(--gap);
+  background: var(--hint-bg);
+  border-bottom: 2px solid var(--panel-border);
+  color: var(--text);
+  font-size: var(--fs-hint);
+  font-weight: 600;
+  text-align: left;
+}
+
+.hint-icon {
+  flex: 0 0 auto;
+  width: 1.4em;
+  height: 1.4em;
+  color: var(--accent);
 }
 
 /* Zone de travail : la scène occupe tout, les panneaux flottent dessus */
 .workspace {
   position: relative;
   flex: 1 1 auto;
-  min-height: 340px;
+  min-height: 300px;
 }
 
 .stage {
@@ -106,6 +141,7 @@ body {
   height: 100%;
   display: block;
   touch-action: none;
+  font-size: var(--canvas-label-size); /* lu par sim.js */
 }
 
 .panel {
@@ -113,7 +149,7 @@ body {
   border: 2px solid var(--panel-border);
   border-radius: var(--radius);
   box-shadow: var(--panel-shadow);
-  padding: 12px;
+  padding: var(--pad);
 }
 
 .panel-controls,
@@ -123,43 +159,78 @@ body {
   z-index: 1;
 }
 
+/* Panneau qui recouvre l'objet ou l'image : presque transparent (sim.js) */
+.panel-controls,
+.panel-readouts,
+.panel-legend { transition: opacity 0.2s; }
+
+.panel.is-ghost { opacity: 0.3; }
+.panel.is-ghost:hover,
+.panel.is-ghost:focus-within { opacity: 1; }
+
 .panel-controls {
-  top: 16px;
-  left: 16px;
-  max-width: calc(50% - 48px);
+  top: var(--gap);
+  left: var(--gap);
+  max-width: calc(100% - var(--readouts-w) - 3 * var(--gap));
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 18px;
+  gap: 0.6em 1.1em;
+  font-size: var(--fs-ui);
 }
 
 .panel-readouts {
-  top: 16px;
-  right: 16px;
-  width: 236px;
+  top: var(--gap);
+  right: var(--gap);
+  width: var(--readouts-w);
 }
 
 .panel-legend {
-  bottom: 16px;
-  left: 16px;
-  max-width: 300px;
+  bottom: var(--gap);
+  left: var(--gap);
+  max-width: calc(50% - 3 * var(--gap));
 }
 
 .panel-title {
-  margin: 0 0 8px;
+  margin: 0 0 0.5em;
   font-family: var(--font-heading);
-  font-size: 11px;
+  font-size: var(--fs-label);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--label-muted);
 }
 
+/* Légende repliable */
+.panel-legend summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.panel-legend summary::-webkit-details-marker { display: none; }
+
+.panel-legend summary::after {
+  content: "";
+  width: 0.45em;
+  height: 0.45em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+}
+
+.panel-legend[open] summary::after { transform: rotate(45deg); }
+
+.panel-legend:not([open]) summary { margin-bottom: 0; }
+
 /* Réglages */
 .control {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5em;
   cursor: pointer;
   color: var(--text);
 }
@@ -168,25 +239,24 @@ body {
 .control-check span {
   font-family: var(--font-heading);
   font-weight: 700;
-  font-size: 14px;
 }
 
 .control select {
   font-family: var(--font-heading);
   font-weight: 700;
-  font-size: 14px;
+  font-size: inherit;
   color: var(--text);
   background: var(--chip-bg);
   border: 2px solid var(--panel-border);
   border-radius: 9999px;
-  padding: 5px 12px;
-  min-width: 8.5em;
+  padding: 0.3em 0.7em;
+  min-width: 7.5em;
   cursor: pointer;
 }
 
 .control-check input {
-  width: 17px;
-  height: 17px;
+  width: 1.15em;
+  height: 1.15em;
   margin: 0;
   accent-color: var(--accent);
   cursor: pointer;
@@ -195,12 +265,12 @@ body {
 .btn {
   font-family: var(--font-heading);
   font-weight: 700;
-  font-size: 14px;
+  font-size: inherit;
   color: var(--accent-text);
   background: var(--accent);
   border: none;
   border-radius: 9999px;
-  padding: 7px 16px;
+  padding: 0.45em 1.05em;
   cursor: pointer;
 }
 
@@ -209,6 +279,7 @@ body {
 .control select:focus-visible,
 .control-check input:focus-visible,
 .btn:focus-visible,
+.panel-legend summary:focus-visible,
 #scene:focus-visible {
   outline: 3px solid var(--accent-2);
   outline-offset: 2px;
@@ -220,7 +291,7 @@ body {
 .readouts {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0.45em;
 }
 
 .readout {
@@ -231,12 +302,12 @@ body {
 }
 
 .readout-label {
-  font-size: 11px;
+  font-size: var(--fs-label);
   color: var(--label-muted);
 }
 
 .readout-value {
-  font-size: 14px;
+  font-size: var(--fs-ui);
   font-weight: 700;
   color: var(--text);
   font-variant-numeric: tabular-nums;
@@ -247,10 +318,10 @@ body {
   margin-top: 2px;
   background: var(--chip-bg);
   color: var(--chip-text);
-  font-size: 12px;
+  font-size: calc(var(--fs-label) * 1.05);
   font-weight: 600;
   border-radius: 9999px;
-  padding: 3px 10px;
+  padding: 0.25em 0.8em;
 }
 
 /* Légende */
@@ -260,23 +331,23 @@ body {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  font-size: 12px;
+  gap: 0.35em;
+  font-size: var(--fs-legend);
   color: var(--muted);
 }
 
 .legend li {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.6em;
 }
 
-.legend-note { font-size: 11px; color: var(--label-muted); }
+
 
 .swatch {
   flex: 0 0 auto;
   display: inline-block;
-  width: 24px;
+  width: 1.8em;
   height: 0;
   border-top: 3px solid currentColor;
   border-radius: 2px;
@@ -285,32 +356,78 @@ body {
 .swatch-ray1 { color: var(--ray1); }
 .swatch-ray2 { color: var(--ray2); }
 .swatch-ray3 { color: var(--ray3); }
-.swatch-dashed { color: var(--label-muted); border-top-style: dashed; }
+.swatch-dashed { color: var(--muted); border-top-style: dashed; }
 
 /* Pied de page */
 .app-footer {
-  padding: 6px 16px 8px;
+  padding: 4px 16px 6px;
   text-align: center;
 }
 
 .app-footer p { margin: 0; }
-
-.hint {
-  font-size: 12px;
-  color: var(--muted);
-}
 
 .credit {
   font-size: 11px;
   color: var(--label-muted);
 }
 
-/* Tablette et téléphone : panneaux empilés sous la scène */
+/* Écran large mais peu haut (projecteur 1280x720, zoom 125-150 %) :
+   panneaux plus compacts, réglages sur une seule ligne si possible. */
+@media (min-width: 801px) and (max-height: 760px) {
+  .readouts { gap: 0.25em; }
+  .panel-title { margin-bottom: 0.3em; }
+}
+
+@media (min-width: 801px) and (max-height: 560px) {
+  :root { --fs-ui: 14px; --fs-hint: 14px; --fs-label: 11px; --gap: 10px; --pad: 8px; }
+  .panel-controls { gap: 0.4em 0.8em; }
+  .control select { min-width: 0; padding: 0.2em 0.5em; }
+  .btn { padding: 0.35em 0.8em; }
+  .app-header { padding-top: 6px; padding-bottom: 6px; }
+  .app-header h1 { font-size: 18px; }
+}
+
+/* Écran de bureau étroit ou bas (projecteur 1024x768, zoom navigateur 125-150 %) :
+   mesures et légende dans une colonne à droite, hors de la scène. */
+@media (min-width: 801px) and (max-width: 1100px), (min-width: 801px) and (max-height: 700px) {
+  .workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) calc(var(--readouts-w) + 2 * var(--gap));
+    grid-template-rows: auto minmax(0, 1fr);
+    align-content: start;
+  }
+
+  .stage {
+    position: relative;
+    inset: auto;
+    grid-column: 1;
+    grid-row: 1 / -1;
+  }
+
+  .panel-readouts,
+  .panel-legend {
+    position: static;
+    grid-column: 2;
+    width: auto;
+    max-width: none;
+    margin: var(--gap) var(--gap) 0;
+  }
+
+  .panel-legend { align-self: start; }
+
+  .panel-controls { max-width: calc(100% - var(--readouts-w) - 4 * var(--gap)); }
+}
+
+/* Tablette en portrait et téléphone : tout s'empile, réglages au-dessus de la scène */
 @media (max-width: 800px) {
+  :root { --canvas-label-size: 15px; }
+
   body {
     height: auto;
     min-height: 100vh;
   }
+
+  .hint-bar { justify-content: flex-start; }
 
   .workspace {
     display: flex;
@@ -320,7 +437,7 @@ body {
     min-height: 0;
   }
 
-  /* Scène au format paysage, réglages au-dessus (on choisit d'abord la lentille) */
+  /* Scène au format paysage */
   .stage {
     position: relative;
     inset: auto;
@@ -344,4 +461,6 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
+
+  .readout:last-child { grid-column: 1 / -1; } /* nature de l'image sur toute la largeur */
 }

@@ -142,10 +142,12 @@
   var HALF_SPAN_NARROW = 45; // idem sur écran étroit (téléphone)
   var NARROW_PX = 600;       // largeur du canevas en dessous de laquelle on resserre
   var LENS_HALF_H = 20;      // demi-hauteur dessinée de la lentille (cm), agrandie si besoin
+  var LEGEND_MIN_STAGE_H = 560; // en dessous, la légende flottante est repliée
   var SNAP = 0.5;            // pas d'accrochage (cm)
   var D_MIN = 1;
   var H_MIN = 1;
   var H_MAX = 15;
+  var TOUCH_TARGET = 48;     // zone de saisie au doigt / stylet (px CSS, invisible)
   var DEFAULTS = { dObj: 30, hObj: 5, showFoci: true };
 
   var canvas = document.getElementById('scene');
@@ -153,6 +155,8 @@
   var lensSelect = document.getElementById('lens-select');
   var fociBox = document.getElementById('show-foci');
   var resetBtn = document.getElementById('reset-btn');
+  var legend = document.getElementById('legend');
+  var floatingPanels = Array.prototype.slice.call(document.querySelectorAll('.workspace > .panel'));
   var ro = {
     dObj: document.getElementById('ro-do'),
     dImg: document.getElementById('ro-di'),
@@ -167,21 +171,24 @@
     hObj: DEFAULTS.hObj,
     showFoci: fociBox.checked,
     drag: null,     // { mode: 'body' | 'tip', offset, pointerId }
-    hover: null     // 'body' | 'tip' | null
+    hover: null,    // 'body' | 'tip' | null
+    legendTouched: false
   };
 
   var view = { w: 0, h: 0, dpr: 1, scale: 1, cx: 0, cy: 0, rect: null };
   var theme = {};
+  var K = 1; // facteur d'épaisseur : 1 pour des étiquettes de 16 px
 
   function readTheme() {
     var cs = getComputedStyle(document.documentElement);
     var names = ['scene-top', 'scene-bottom', 'grid', 'grid-major', 'axis', 'lens', 'lens-fill',
       'focal-fill', 'focal-stroke', 'label', 'scalebar', 'object', 'handle-fill', 'image',
-      'image-virtual', 'ray1', 'ray2', 'ray3', 'badge-bg', 'badge-text', 'font-canvas',
-      'canvas-label-size'];
+      'image-virtual', 'ray1', 'ray2', 'ray3', 'badge-bg', 'badge-text', 'font-canvas', 'label-halo'];
     names.forEach(function (n) { theme[n] = cs.getPropertyValue('--' + n).trim(); });
     if (!theme['font-canvas']) theme['font-canvas'] = 'system-ui, sans-serif';
-    theme.labelPx = parseFloat(theme['canvas-label-size']) || 12;
+    // --canvas-label-size peut contenir clamp(...) : on lit la valeur calculée sur le canevas.
+    theme.labelPx = parseFloat(getComputedStyle(canvas).fontSize) || 16;
+    K = Math.max(0.85, theme.labelPx / 16);
   }
 
   function snap(v) { return Math.round(v / SNAP) * SNAP; }
@@ -198,6 +205,25 @@
   function sy(y) { return view.cy - y * view.scale; }
   function wx(px) { return (px - view.cx) / view.scale; }
   function wy(py) { return (view.cy - py) / view.scale; }
+
+  function isFloating(el) { return getComputedStyle(el).position === 'absolute'; }
+
+  /** Légende repliée automatiquement si la scène est basse (sauf choix de l'élève). */
+  function updateLegend() {
+    if (!legend || state.legendTouched) return;
+    // Ouverte si tout est empilé (téléphone, tablette en portrait) ou si la scène est assez haute.
+    var stacked = window.matchMedia && window.matchMedia('(max-width: 800px)').matches;
+    var want;
+    if (stacked) want = true;
+    else if (isFloating(legend)) want = view.h >= LEGEND_MIN_STAGE_H;
+    else {
+      // Colonne de droite (écran étroit ou bas) : ouverte s'il reste la place sous les mesures.
+      var ws = legend.parentNode.getBoundingClientRect();
+      var rd = document.querySelector('.panel-readouts').getBoundingClientRect();
+      want = ws.bottom - rd.bottom >= 13 * theme.labelPx;
+    }
+    if (legend.open !== want) legend.open = want;
+  }
 
   function resize() {
     var r = canvas.getBoundingClientRect();
@@ -216,6 +242,7 @@
     state.hObj = clamp(state.hObj, H_MIN, hMax());
     state.dObj = clamp(state.dObj, D_MIN, dMax());
     readTheme();
+    updateLegend();
     draw();
   }
 
@@ -233,6 +260,18 @@
   }
 
   function labelSize() { return theme.labelPx; }
+
+  /** Rectangles (px CSS, repère du canevas) des panneaux qui flottent sur la scène. */
+  function panelObstacles() {
+    var c = canvas.getBoundingClientRect();
+    var out = [];
+    floatingPanels.forEach(function (el) {
+      if (!isFloating(el)) return;
+      var r = el.getBoundingClientRect();
+      out.push({ x0: r.left - c.left, y0: r.top - c.top, x1: r.right - c.left, y1: r.bottom - c.top });
+    });
+    return out;
+  }
 
   function drawBackground() {
     var g = ctx.createLinearGradient(0, 0, 0, view.h);
@@ -267,8 +306,8 @@
 
   function drawAxis() {
     ctx.strokeStyle = theme.axis;
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([7, 6]);
+    ctx.lineWidth = 1.5 * K;
+    ctx.setLineDash([7 * K, 6 * K]);
     ctx.beginPath();
     ctx.moveTo(0, sy(0)); ctx.lineTo(view.w, sy(0));
     ctx.stroke();
@@ -276,21 +315,29 @@
   }
 
   // Barre d'échelle en bas à droite (le bas gauche est occupé par la légende).
+  function scaleBarRect() {
+    var len = 10 * view.scale, m = 18 * K, t = 5 * K;
+    var x0 = view.w - m - len, y0 = view.h - m;
+    return { x0: x0 - labelSize(), y0: y0 - t - 2 - labelSize(), x1: x0 + len + labelSize(), y1: y0 + t };
+  }
+
   function drawScaleBar() {
     var len = 10 * view.scale;
-    var x0 = view.w - 18 - len, y0 = view.h - 18;
+    var m = 18 * K;
+    var x0 = view.w - m - len, y0 = view.h - m;
+    var t = 5 * K;
     ctx.strokeStyle = theme.scalebar;
     ctx.fillStyle = theme.scalebar;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * K;
     ctx.beginPath();
-    ctx.moveTo(x0, y0 - 5); ctx.lineTo(x0, y0 + 5);
+    ctx.moveTo(x0, y0 - t); ctx.lineTo(x0, y0 + t);
     ctx.moveTo(x0, y0); ctx.lineTo(x0 + len, y0);
-    ctx.moveTo(x0 + len, y0 - 5); ctx.lineTo(x0 + len, y0 + 5);
+    ctx.moveTo(x0 + len, y0 - t); ctx.lineTo(x0 + len, y0 + t);
     ctx.stroke();
     ctx.font = fontPx(labelSize(), '700');
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText('10 cm', x0 + len / 2, y0 - 6);
+    haloText('10 cm', x0 + len / 2, y0 - t - 2);
   }
 
   function arrowHead(x, y, angle, size, color) {
@@ -307,21 +354,35 @@
     ctx.restore();
   }
 
-  function drawLens(rays) {
-    // Demi-hauteur : ~20 cm, mais assez grande pour couvrir les points où les
-    // rayons visibles traversent la lentille (sinon ils seraient déviés dans le vide).
+  function lensBulge() { return clamp(view.scale * 1.6, 8 * K, 18 * K); }
+
+  /** Demi-hauteur dessinée de la lentille (cm).
+   *  ~20 cm, agrandie pour couvrir les points où les rayons visibles traversent
+   *  la lentille, puis réduite si un panneau flottant ou le badge la recouvrirait. */
+  function lensHalfHeight(rays, obstacles) {
     var ymax = view.rect.ymax;
     var need = 0;
     rays.segments.forEach(function (s) {
       if (s.kind === 'refracted' && s.a.x === 0 && Math.abs(s.a.y) < ymax) need = Math.max(need, Math.abs(s.a.y) + 2);
     });
-    var halfH = Math.min(Math.max(LENS_HALF_H, need), ymax * 0.92);
+    var halfPx = Math.min(Math.max(LENS_HALF_H, need), ymax * 0.92) * view.scale;
+    var x = sx(0), bulge = lensBulge() + 6;
+    var margin = 8 * K;
+    obstacles.forEach(function (o) {
+      if (o.x1 < x - bulge || o.x0 > x + bulge) return; // pas dans la colonne de la lentille
+      if (o.y1 <= view.cy) halfPx = Math.min(halfPx, view.cy - o.y1 - margin);
+      else if (o.y0 >= view.cy) halfPx = Math.min(halfPx, o.y0 - view.cy - margin);
+    });
+    return Math.max(halfPx, 30 * K) / view.scale;
+  }
+
+  function drawLens(halfH) {
     var top = sy(halfH), bottom = sy(-halfH), x = sx(0);
     // Lentille biconvexe mince (les rayons sont déviés dans le plan x = 0)
-    var bulge = clamp(view.scale * 1.6, 8, 16); // demi-épaisseur au centre (px)
+    var bulge = lensBulge();
     ctx.fillStyle = theme['lens-fill'];
     ctx.strokeStyle = theme.lens;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * K;
     ctx.beginPath();
     ctx.moveTo(x, top);
     ctx.quadraticCurveTo(x + 2 * bulge, view.cy, x, bottom);
@@ -331,19 +392,31 @@
     ctx.stroke();
     // Plan de la lentille, discret
     ctx.globalAlpha = 0.45;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1 * K;
     ctx.beginPath();
     ctx.moveTo(x, top); ctx.lineTo(x, bottom);
     ctx.stroke();
     ctx.globalAlpha = 1;
+    return { x0: x - bulge, y0: top, x1: x + bulge, y1: bottom };
   }
 
-  function axisLabel(text, x, align) {
+  /** Texte avec un halo clair dessous : reste lisible quand un rayon le traverse. */
+  function haloText(text, x, y) {
+    ctx.save();
+    ctx.strokeStyle = theme['label-halo'] || '#ffffff';
+    ctx.lineWidth = 4 * K;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(text, x, y);
+    ctx.restore();
+    ctx.fillText(text, x, y);
+  }
+
+  function axisLabel(text, x, align, dy) {
     ctx.fillStyle = theme.label;
     ctx.font = fontPx(labelSize(), '700');
     ctx.textAlign = align;
     ctx.textBaseline = 'top';
-    ctx.fillText(text, x, sy(0) + 9);
+    haloText(text, x, sy(0) + (dy || 9 * K));
   }
 
   /** feetX : abscisses écran des pieds A (et A' si visible), dont l'étiquette
@@ -351,17 +424,18 @@
    *  l'étiquette du foyer passe à gauche du point pour ne pas se chevaucher. */
   function drawFocalPoints(feetX) {
     var f = focal();
+    var rad = 6.5 * K;
     [[-f, 'F'], [f, "F'"]].forEach(function (p) {
       var px = sx(p[0]), py = sy(0);
       ctx.fillStyle = theme['focal-fill'];
       ctx.strokeStyle = theme['focal-stroke'];
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.5 * K;
       ctx.beginPath();
-      ctx.arc(px, py, 5, 0, 2 * Math.PI);
+      ctx.arc(px, py, rad, 0, 2 * Math.PI);
       ctx.fill();
       ctx.stroke();
-      var crowded = feetX.some(function (fx) { return fx - px > 0.5 && fx - px < 24; });
-      if (crowded) axisLabel(p[1], px - 7, 'right');
+      var crowded = feetX.some(function (fx) { return fx - px > 0.5 && fx - px < 2.4 * labelSize(); });
+      if (crowded) axisLabel(p[1], px - rad - 2, 'right');
       else axisLabel(p[1], px, 'center'); // centré sous le foyer
     });
   }
@@ -377,10 +451,12 @@
     dashed.forEach(function (s) {
       var c = clipSegment(s.a, s.b, r);
       if (!c) return;
+      var construction = s.kind === 'construction';
       ctx.strokeStyle = rayColor(s.ray);
-      ctx.globalAlpha = s.kind === 'construction' ? 0.45 : 0.6;
-      ctx.lineWidth = s.kind === 'construction' ? 1.4 : 2;
-      ctx.setLineDash(s.kind === 'construction' ? [2, 5] : [8, 6]);
+      // Prolongements : même couleur et épaisseur que les rayons, en tirets.
+      ctx.globalAlpha = construction ? 0.7 : 1;
+      ctx.lineWidth = (construction ? 2 : 3) * K;
+      ctx.setLineDash(construction ? [4 * K, 5 * K] : [10 * K, 7 * K]);
       ctx.beginPath();
       ctx.moveTo(sx(c.a.x), sy(c.a.y)); ctx.lineTo(sx(c.b.x), sy(c.b.y));
       ctx.stroke();
@@ -388,19 +464,23 @@
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
 
-    var head = clamp(view.w / 95, 9, 14);
+    var head = Math.min(15 * K, view.w / 40);
+    // Flèches des rayons incidents décalées le long du segment : elles ne s'empilent pas près de B.
+    var frac = { 1: 0.5, 2: 0.3, 3: 0.7 };
     solid.forEach(function (s) {
       var c = clipSegment(s.a, s.b, r);
       if (!c) return;
       var x1 = sx(c.a.x), y1 = sy(c.a.y), x2 = sx(c.b.x), y2 = sy(c.b.y);
       ctx.strokeStyle = rayColor(s.ray);
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 3 * K;
       ctx.beginPath();
       ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
       ctx.stroke();
       var len = Math.hypot(x2 - x1, y2 - y1);
-      if (len > 34) {
-        arrowHead((x1 + x2) / 2, (y1 + y2) / 2, Math.atan2(y2 - y1, x2 - x1), head, rayColor(s.ray));
+      var hd = Math.min(head, len / 3); // pas de flèches empilées sur les segments courts
+      if (hd >= 7) {
+        var t = s.kind === 'incident' ? frac[s.ray] : 0.5;
+        arrowHead(x1 + t * (x2 - x1), y1 + t * (y2 - y1), Math.atan2(y2 - y1, x2 - x1), hd, rayColor(s.ray));
       }
     });
     ctx.lineCap = 'butt';
@@ -410,12 +490,14 @@
   function drawVerticalArrow(x, h, color, dashed) {
     var px = sx(x), y0 = sy(0), y1 = sy(h);
     var dir = h >= 0 ? -1 : 1; // sens écran de la pointe
-    var head = clamp(view.w / 80, 10, 18);
+    var len = Math.abs(y1 - y0);
+    // Tête bornée par la longueur de la flèche, mais toujours visible sur une petite scène.
+    var head = Math.min(19 * K, Math.max(0.4 * len, Math.min(9, 0.8 * len)));
     var stemEnd = y1 - dir * head * 0.8;
     ctx.strokeStyle = color;
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 5 * K;
     ctx.lineCap = dashed ? 'butt' : 'round';
-    if (dashed) ctx.setLineDash([7, 6]);
+    if (dashed) ctx.setLineDash([8 * K, 6 * K]);
     ctx.beginPath();
     ctx.moveTo(px, y0);
     if (Math.abs(stemEnd - y0) > 1 && (stemEnd - y0) * dir > 0) ctx.lineTo(px, stemEnd);
@@ -428,21 +510,25 @@
     ctx.lineTo(px - head * 0.55, y1 - dir * head);
     ctx.lineTo(px + head * 0.55, y1 - dir * head);
     ctx.closePath();
-    if (dashed) {
-      ctx.globalAlpha = 0.85;
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    } else {
-      ctx.fill();
-    }
+    ctx.fill();
   }
 
-  function pointLabel(text, x, y, dx, dy, align, baseline, color) {
-    ctx.fillStyle = color || theme.label;
+  /** Écrit une étiquette et renvoie son rectangle (px CSS). */
+  function pointLabel(text, x, y, dx, dy, align, baseline) {
+    ctx.fillStyle = theme.label;
     ctx.font = fontPx(labelSize(), '700');
     ctx.textAlign = align;
     ctx.textBaseline = baseline;
-    ctx.fillText(text, sx(x) + dx, sy(y) + dy);
+    var px = sx(x) + dx, py = sy(y) + dy;
+    haloText(text, px, py);
+    var w = ctx.measureText(text).width, h = labelSize();
+    var x0 = align === 'right' ? px - w : align === 'center' ? px - w / 2 : px;
+    var y0 = baseline === 'bottom' ? py - h : baseline === 'middle' ? py - h / 2 : py;
+    return { x0: x0, y0: y0, x1: x0 + w, y1: y0 + h };
+  }
+
+  function union(a, b) {
+    return { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) };
   }
 
   function drawObject() {
@@ -450,17 +536,19 @@
     drawVerticalArrow(x, h, theme.object, false);
     // Poignée de la pointe B
     var active = state.hover === 'tip' || (state.drag && state.drag.mode === 'tip');
-    ctx.lineWidth = 2;
+    // Poignée plus petite si la flèche est courte, pour laisser voir sa pointe.
+    var rad = Math.max(4, Math.min((active ? 9 : 7) * K, 0.28 * Math.abs(sy(h) - sy(0))));
+    ctx.lineWidth = 2.5 * K;
     ctx.strokeStyle = theme.object;
     ctx.fillStyle = theme['handle-fill'];
     ctx.beginPath();
-    ctx.arc(sx(x), sy(h), active ? 8 : 6, 0, 2 * Math.PI);
-    ctx.globalAlpha = active ? 1 : 0.9;
+    ctx.arc(sx(x), sy(h), rad, 0, 2 * Math.PI);
     ctx.fill();
     ctx.stroke();
-    ctx.globalAlpha = 1;
-    pointLabel('A', x, 0, -8, 9, 'right', 'top');
-    pointLabel('B', x, h, -10, -6, 'right', 'bottom');
+    var box = { x0: sx(x) - rad, y0: sy(h) - rad, x1: sx(x) + rad, y1: sy(0) };
+    box = union(box, pointLabel('A', x, 0, -9 * K, 9 * K, 'right', 'top'));
+    box = union(box, pointLabel('B', x, h, -11 * K, -6 * K, 'right', 'bottom'));
+    return box;
   }
 
   function imageInView(img) {
@@ -474,26 +562,43 @@
     var dashed = img.type === 'virtual';
     drawVerticalArrow(img.xImg, img.hImg, dashed ? theme['image-virtual'] : theme.image, dashed);
     var up = img.hImg >= 0;
-    pointLabel("A'", img.xImg, 0, -8, up ? 9 : -9, 'right', up ? 'top' : 'bottom');
-    pointLabel("B'", img.xImg, img.hImg, 10, up ? -6 : 6, 'left', up ? 'bottom' : 'top');
+    var hw = 10 * K;
+    var box = { x0: sx(img.xImg) - hw, y0: Math.min(sy(0), sy(img.hImg)), x1: sx(img.xImg) + hw, y1: Math.max(sy(0), sy(img.hImg)) };
+    box = union(box, pointLabel("A'", img.xImg, 0, -9 * K, up ? 9 * K : -9 * K, 'right', up ? 'top' : 'bottom'));
+    box = union(box, pointLabel("B'", img.xImg, img.hImg, 11 * K, up ? -6 * K : 6 * K, 'left', up ? 'bottom' : 'top'));
+    return box;
   }
 
-  function badge(text) {
+  function overlaps(a, b) { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
+
+  /** Rectangle du badge, calculé avant de dessiner la lentille : en bas au centre,
+   *  ou en haut au centre s'il toucherait la barre d'échelle ou un panneau. */
+  function badgeRect(text, obstacles) {
     var size = labelSize() + 2;
     ctx.font = fontPx(size, '700');
-    var padX = 16, padY = 8;
-    var tw = ctx.measureText(text).width;
-    var w = tw + 2 * padX, h = size + 2 * padY;
-    // En bas au centre : les coins sont occupés par les panneaux flottants.
-    var x = (view.w - w) / 2, y = view.h - h - 16;
+    var padX = 16 * K, padY = 8 * K, m = 16 * K;
+    var w = ctx.measureText(text).width + 2 * padX, h = size + 2 * padY;
+    var x = (view.w - w) / 2;
+    var avoid = obstacles.concat([scaleBarRect()]);
+    var candidates = [view.h - h - m, m];
+    for (var i = 0; i < candidates.length; i++) {
+      var r = { x0: x, y0: candidates[i], x1: x + w, y1: candidates[i] + h, text: text, size: size };
+      if (!avoid.some(function (o) { return overlaps(o, r); })) return r;
+    }
+    return { x0: x, y0: candidates[0], x1: x + w, y1: candidates[0] + h, text: text, size: size };
+  }
+
+  function drawBadge(b) {
+    var w = b.x1 - b.x0, h = b.y1 - b.y0;
     ctx.fillStyle = theme['badge-bg'];
     ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(x, y, w, h, h / 2); else ctx.rect(x, y, w, h);
+    if (ctx.roundRect) ctx.roundRect(b.x0, b.y0, w, h, h / 2); else ctx.rect(b.x0, b.y0, w, h);
     ctx.fill();
     ctx.fillStyle = theme['badge-text'];
+    ctx.font = fontPx(b.size, '700');
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, x + w / 2, y + h / 2 + 1);
+    ctx.fillText(b.text, b.x0 + w / 2, b.y0 + h / 2 + 1);
   }
 
   function draw() {
@@ -507,24 +612,51 @@
     ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
     drawBackground();
 
+    var obstacles = panelObstacles();
+    var badge = null;
+    if (!hasImage) badge = badgeRect("Image à l'infini", obstacles);
+    else if (!visible) badge = badgeRect('Image hors du champ', obstacles);
+    if (badge) obstacles.push(badge);
+
     drawGrid();
     drawAxis();
-    drawLens(rays);
-    axisLabel('O', sx(0) + 7, 'left');
+    var lensBox = drawLens(lensHalfHeight(rays, obstacles));
+    drawRays(rays);
+    // Foyers et O après les rayons : points et étiquettes (avec halo) restent au-dessus.
     if (state.showFoci) {
       var feetX = [sx(-state.dObj)];
       if (visible) feetX.push(sx(img.xImg));
       drawFocalPoints(feetX);
     }
-    drawRays(rays);
-    drawObject();
-    if (visible) drawImage(img);
+    axisLabel('O', sx(0) + 10 * K, 'left', 11 * K); // en bas à droite du centre optique
+    var objBox = drawObject();
+    var imgBox = visible ? drawImage(img) : null;
     drawScaleBar();
+    if (badge) drawBadge(badge);
 
-    if (!hasImage) badge("Image à l'infini");
-    else if (!visible) badge('Image hors du champ');
+    ghostPanels([objBox, imgBox]);
+
+    // Géométrie exposée pour les tests de mise en page (aucun effet visible).
+    canvas.setAttribute('data-geom', JSON.stringify({ lens: lensBox, object: objBox, image: imgBox, badge: badge }));
 
     updateReadouts(img, visible);
+  }
+
+  /** Un panneau flottant qui recouvre l'objet ou l'image devient presque
+   *  transparent (il redevient opaque au survol ou au clavier). */
+  function ghostPanels(boxes) {
+    var c = canvas.getBoundingClientRect();
+    floatingPanels.forEach(function (el) {
+      var covers = false;
+      if (isFloating(el)) {
+        var r = el.getBoundingClientRect();
+        var p = { x0: r.left - c.left, y0: r.top - c.top, x1: r.right - c.left, y1: r.bottom - c.top };
+        covers = boxes.some(function (b) {
+          return b && p.x0 < b.x1 && b.x0 < p.x1 && p.y0 < b.y1 && b.y0 < p.y1;
+        });
+      }
+      el.classList.toggle('is-ghost', covers);
+    });
   }
 
   function updateReadouts(img, visible) {
@@ -550,12 +682,14 @@
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   }
 
+  /** Zones de saisie : au moins 48 px au doigt ou au stylet (tableau interactif). */
   function hitTest(p, pointerType) {
-    var tol = pointerType === 'touch' ? 22 : 12;
+    var tol = pointerType === 'mouse' ? 12 * K : Math.max(TOUCH_TARGET / 2, 12 * K);
     var ox = sx(-state.dObj), tipY = sy(state.hObj), footY = sy(0);
-    if (Math.hypot(p.x - ox, p.y - tipY) <= tol + 2) return 'tip';
-    if (Math.abs(p.x - ox) <= tol && p.y >= tipY - tol && p.y <= footY + tol) return 'body';
-    return null;
+    if (Math.abs(p.x - ox) > tol || p.y < tipY - tol || p.y > footY + tol) return null;
+    // Haut de la flèche = pointe B ; si l'objet est petit, on partage la zone en deux.
+    var split = tipY + Math.min(tol, (footY - tipY) / 2);
+    return p.y <= split ? 'tip' : 'body';
   }
 
   canvas.addEventListener('pointerdown', function (e) {
@@ -567,7 +701,7 @@
     state.drag = {
       mode: hit,
       pointerId: e.pointerId,
-      offset: hit === 'body' ? wx(p.x) - (-state.dObj) : 0
+      offset: hit === 'body' ? wx(p.x) - (-state.dObj) : wy(p.y) - state.hObj
     };
     canvas.style.cursor = 'grabbing';
     requestDraw();
@@ -580,7 +714,7 @@
         var x = wx(p.x) - state.drag.offset;
         state.dObj = clamp(snap(-x), D_MIN, dMax());
       } else {
-        state.hObj = clamp(snap(wy(p.y)), H_MIN, hMax());
+        state.hObj = clamp(snap(wy(p.y) - state.drag.offset), H_MIN, hMax());
       }
       requestDraw();
       return;
@@ -597,7 +731,7 @@
     if (!state.drag || state.drag.pointerId !== e.pointerId) return;
     state.drag = null;
     var hit = hitTest(pointerPos(e), e.pointerType);
-    state.hover = e.pointerType === 'touch' ? null : hit;
+    state.hover = e.pointerType === 'mouse' ? hit : null;
     canvas.style.cursor = state.hover ? 'grab' : 'default';
     requestDraw();
   }
@@ -642,8 +776,17 @@
     requestDraw();
   });
 
+  if (legend) {
+    // Un clic de l'élève sur « Rayons » a priorité sur le repli automatique.
+    legend.querySelector('summary').addEventListener('click', function () { state.legendTouched = true; });
+    legend.addEventListener('toggle', requestDraw);
+  }
+
   if (typeof ResizeObserver !== 'undefined') {
     new ResizeObserver(function () { resize(); }).observe(canvas);
+    // Les panneaux changent de taille (polices chargées, légende repliée) : la lentille s'adapte.
+    var panelObserver = new ResizeObserver(function () { requestDraw(); });
+    floatingPanels.forEach(function (el) { panelObserver.observe(el); });
   }
   window.addEventListener('resize', resize);
   if (window.matchMedia) {
