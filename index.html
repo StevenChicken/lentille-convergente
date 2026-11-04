@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lentille convergente : trouver la vergence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>Lentille convergente&nbsp;: trouver la vergence</h1>
+  </header>
+
+  <main class="workspace">
+    <section class="stage" aria-label="Schéma optique">
+      <canvas id="scene" tabindex="0"
+        aria-label="Schéma de la lentille convergente. Faites glisser l'objet AB avec la souris ou le doigt, ou utilisez les flèches du clavier."></canvas>
+    </section>
+
+    <div class="panel panel-controls" role="toolbar" aria-label="Réglages">
+      <label class="control">
+        <span class="control-label">Lentille</span>
+        <select id="lens-select">
+          <option value="A" selected>Lentille A</option>
+          <option value="B">Lentille B</option>
+          <option value="C">Lentille C</option>
+          <option value="D">Lentille D</option>
+          <option value="E">Lentille E</option>
+        </select>
+      </label>
+      <label class="control control-check">
+        <input type="checkbox" id="show-foci" checked>
+        <span>Afficher les foyers F et F'</span>
+      </label>
+      <button type="button" id="reset-btn" class="btn">Réinitialiser</button>
+    </div>
+
+    <aside class="panel panel-readouts" aria-label="Mesures">
+      <h2 class="panel-title">Mesures</h2>
+      <div class="readouts">
+        <div class="readout">
+          <span class="readout-label">Distance objet-lentille&nbsp;:</span>
+          <span class="readout-value" id="ro-do"></span>
+        </div>
+        <div class="readout">
+          <span class="readout-label">Distance image-lentille&nbsp;:</span>
+          <span class="readout-value" id="ro-di"></span>
+        </div>
+        <div class="readout">
+          <span class="readout-label">Taille de l'objet&nbsp;:</span>
+          <span class="readout-value" id="ro-ho"></span>
+        </div>
+        <div class="readout">
+          <span class="readout-label">Taille de l'image&nbsp;:</span>
+          <span class="readout-value" id="ro-hi"></span>
+        </div>
+        <div class="readout">
+          <span class="readout-label">Nature de l'image&nbsp;:</span>
+          <span class="chip" id="ro-nature"></span>
+        </div>
+      </div>
+    </aside>
+
+    <div class="panel panel-legend" aria-label="Légende des rayons">
+      <h2 class="panel-title">Rayons</h2>
+      <ul class="legend">
+        <li><span class="swatch swatch-ray1"></span>Rayon parallèle à l'axe</li>
+        <li><span class="swatch swatch-ray2"></span>Rayon passant par le centre optique</li>
+        <li><span class="swatch swatch-ray3"></span>Rayon passant par le foyer objet F</li>
+        <li class="legend-note"><span class="swatch swatch-dashed"></span>Pointillés&nbsp;: prolongements (image virtuelle)</li>
+      </ul>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <p class="hint">Faites glisser l'objet AB pour changer sa distance à la lentille, et sa pointe B pour changer sa taille.</p>
+    <p class="credit">Simulation réalisée par Francesca et Stefano avec Claude Code · Collège Voltaire</p>
+  </footer>
+
+  <script src="sim.js"></script>
+</body>
+</html>

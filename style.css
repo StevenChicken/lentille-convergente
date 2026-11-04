@@ -1,0 +1,347 @@
+/* ==========================================================
+   Thème : toutes les couleurs et polices sont ici.
+   sim.js lit ces variables (getComputedStyle) pour dessiner
+   le canevas : pour changer l'apparence, modifier seulement
+   ce bloc :root.
+   ========================================================== */
+:root {
+  /* Polices (repli system-ui si hors ligne) */
+  --font-heading: "Quicksand", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-canvas: "Quicksand", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --canvas-label-size: 12px;
+
+  /* Interface */
+  --bg: #F6FAFE;
+  --header-bg: #ffffff;
+  --header-shadow: 0 2px 4px rgba(19, 53, 84, 0.07);
+  --heading: #1F2937;
+  --text: #0F151A;
+  --muted: #475966;
+  --label-muted: #738B99;
+  --panel: #ffffff;
+  --panel-border: #D5E1ED;
+  --panel-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.10), 0 8px 10px -6px rgba(0, 0, 0, 0.10);
+  --radius: 16px;
+  --chip-bg: #EFF5FB;
+  --chip-text: #475966;
+  --accent: #476EE4;
+  --accent-2: #5880F1;
+  --accent-text: #ffffff;
+
+  /* Canevas */
+  --scene-top: #F6FAFE;
+  --scene-bottom: #EAF1F9;
+  --grid: rgba(71, 110, 228, 0.07);
+  --grid-major: rgba(71, 110, 228, 0.14);
+  --axis: #8A98A6;
+  --lens: #5568C8;
+  --lens-fill: rgba(123, 143, 224, 0.25);
+  --focal-fill: #FFD75E;
+  --focal-stroke: #8A6D1F;
+  --label: #0F151A;
+  --scalebar: #475966;
+  --object: #E6B844;
+  --handle-fill: #ffffff;
+  --image: #008F87;          /* image réelle */
+  --image-virtual: #77C7C1;  /* image virtuelle */
+  --ray1: #E5484D;
+  --ray2: #476EE4;
+  --ray3: #2FA36B;
+  --badge-bg: #476EE4;
+  --badge-text: #ffffff;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.4;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* En-tête */
+.app-header {
+  position: relative;
+  z-index: 2;
+  background: var(--header-bg);
+  box-shadow: var(--header-shadow);
+  padding: 14px 20px;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--heading);
+}
+
+/* Zone de travail : la scène occupe tout, les panneaux flottent dessus */
+.workspace {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 340px;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, var(--scene-top), var(--scene-bottom));
+}
+
+#scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.panel {
+  background: var(--panel);
+  border: 2px solid var(--panel-border);
+  border-radius: var(--radius);
+  box-shadow: var(--panel-shadow);
+  padding: 12px;
+}
+
+.panel-controls,
+.panel-readouts,
+.panel-legend {
+  position: absolute;
+  z-index: 1;
+}
+
+.panel-controls {
+  top: 16px;
+  left: 16px;
+  max-width: calc(50% - 48px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+}
+
+.panel-readouts {
+  top: 16px;
+  right: 16px;
+  width: 236px;
+}
+
+.panel-legend {
+  bottom: 16px;
+  left: 16px;
+  max-width: 300px;
+}
+
+.panel-title {
+  margin: 0 0 8px;
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--label-muted);
+}
+
+/* Réglages */
+.control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.control-label,
+.control-check span {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.control select {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--chip-bg);
+  border: 2px solid var(--panel-border);
+  border-radius: 9999px;
+  padding: 5px 12px;
+  min-width: 8.5em;
+  cursor: pointer;
+}
+
+.control-check input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.btn {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: none;
+  border-radius: 9999px;
+  padding: 7px 16px;
+  cursor: pointer;
+}
+
+.btn:hover { background: var(--accent-2); }
+
+.control select:focus-visible,
+.control-check input:focus-visible,
+.btn:focus-visible,
+#scene:focus-visible {
+  outline: 3px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+#scene:focus-visible { outline-offset: -3px; }
+
+/* Mesures */
+.readouts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.readout {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.readout-label {
+  font-size: 11px;
+  color: var(--label-muted);
+}
+
+.readout-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.chip {
+  display: inline-block;
+  margin-top: 2px;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 9999px;
+  padding: 3px 10px;
+}
+
+/* Légende */
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-note { font-size: 11px; color: var(--label-muted); }
+
+.swatch {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 24px;
+  height: 0;
+  border-top: 3px solid currentColor;
+  border-radius: 2px;
+}
+
+.swatch-ray1 { color: var(--ray1); }
+.swatch-ray2 { color: var(--ray2); }
+.swatch-ray3 { color: var(--ray3); }
+.swatch-dashed { color: var(--label-muted); border-top-style: dashed; }
+
+/* Pied de page */
+.app-footer {
+  padding: 6px 16px 8px;
+  text-align: center;
+}
+
+.app-footer p { margin: 0; }
+
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.credit {
+  font-size: 11px;
+  color: var(--label-muted);
+}
+
+/* Tablette et téléphone : panneaux empilés sous la scène */
+@media (max-width: 800px) {
+  body {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .workspace {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 0;
+    min-height: 0;
+  }
+
+  /* Scène au format paysage, réglages au-dessus (on choisit d'abord la lentille) */
+  .stage {
+    position: relative;
+    inset: auto;
+    height: 62vh;
+    height: min(75vw, 60vh);
+    min-height: 240px;
+  }
+
+  .panel-controls { order: -1; }
+
+  .panel-controls,
+  .panel-readouts,
+  .panel-legend {
+    position: static;
+    width: auto;
+    max-width: none;
+    margin: 0 12px;
+  }
+
+  .readouts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
